@@ -31,11 +31,11 @@ export function engineOk<T extends { ok: boolean; error?: string }>(r: T | null)
   return fail(code === "forbidden" ? 403 : code === "not_found" ? 404 : 409, code, ENGINE_MSG[code] ?? ENGINE_MSG.bad_state);
 }
 
-export type SweepResult = { expired: number; promoted: number; returned: number; warned: number };
+export type SweepResult = { expired: number; promoted: number; returned: number; warned: number; missed?: number };
 /** Runs the idempotent sweep; true when it changed something (so the caller drains the outbox). */
 export async function sweep(dropId: string): Promise<boolean> {
   const r = await fn<SweepResult>("sweep_drop", dropId);
-  return r.expired + r.warned > 0;
+  return r.expired + r.warned + (r.missed ?? 0) > 0;
 }
 
 // ------------------------------------------------------------------ staff
@@ -51,9 +51,24 @@ export async function activeStaff(): Promise<ActiveStaff> {
   return { ...s, role: row.role, displayName: row.display_name };
 }
 
+/** The shared demo shops (judge mode) can't be edited: settings, team and catalog writes are refused. */
+async function notDemo(shopId: string) {
+  const [x] = await sql<{ is_sandbox: boolean }[]>`select is_sandbox from shops where id = ${shopId}`;
+  if (x?.is_sandbox) fail(403, "demo_read_only", "The demo shop can't be edited. Create your own shop to try this.");
+}
+
+/** Owner of this shop, for writes to its settings and team (never the demo shop). */
 export async function requireOwner(shopId: string): Promise<ActiveStaff> {
   const s = await activeStaff();
   if (s.shopId !== shopId || s.role !== "owner") forbidden();
+  await notDemo(shopId);
+  return s;
+}
+
+/** Active staff allowed to change the catalog (never in the demo shop). */
+export async function activeEditor(): Promise<ActiveStaff> {
+  const s = await activeStaff();
+  await notDemo(s.shopId);
   return s;
 }
 
@@ -116,19 +131,38 @@ export async function products(shopId: string, productId?: string): Promise<Prod
 export const appUrl = () => (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
 export const shareUrl = (shopSlug: string, code: string) => `${appUrl()}/s/${shopSlug}/d/${code}`;
 
+/** Public sale-room state plus the cached viewer count (never waits for Nexconn). */
 export async function dropState(dropId: string): Promise<DropState> {
-  return (await fn<DropState | null>("drop_state", dropId)) ?? notFound();
+  const s = (await fn<Omit<DropState, "viewers"> | null>("drop_state", dropId)) ?? notFound();
+  return { ...s, viewers: cachedViewers(s.channelId) };
 }
 
-const viewerCache = new Map<string, { at: number; n: number | null }>();
-/** Sale-room participant count in nexconn mode, cached 5 s per instance; null when not measured. */
-export async function viewers(channelId: string): Promise<number | null> {
+const viewerCache = new Map<string, { at: number; n: number | null; busy?: boolean }>();
+const refreshViewers = (channelId: string) => {
+  const hit = viewerCache.get(channelId);
+  if (hit?.busy) return Promise.resolve();
+  viewerCache.set(channelId, { at: hit?.at ?? 0, n: hit?.n ?? null, busy: true });
+  return roomCount(channelId).catch(() => null)
+    .then((n) => { viewerCache.set(channelId, { at: Date.now(), n }); if (viewerCache.size > 500) viewerCache.clear(); });
+};
+
+/**
+ * Sale-room participant count (nexconn mode), at most ~5 s old: returns what is cached now (null until the first
+ * lookup lands, and always null in mock mode or after an error) and refreshes a stale entry in the background.
+ * ponytail: per-instance cache, fire-and-forget refresh; a request that lands on a cold instance shows null once.
+ */
+export function cachedViewers(channelId: string): number | null {
   if (flags.mode !== "nexconn") return null;
   const hit = viewerCache.get(channelId);
-  if (hit && Date.now() - hit.at < 5000) return hit.n;
-  const n = await roomCount(channelId).catch(() => null);
-  viewerCache.set(channelId, { at: Date.now(), n });
-  return n;
+  if (!hit || Date.now() - hit.at >= 5000) void refreshViewers(channelId);
+  return hit?.n ?? null;
+}
+
+/** Same count for the seller console heartbeat: waits for a lookup only when nothing is cached yet. */
+export async function viewers(channelId: string): Promise<number | null> {
+  if (flags.mode !== "nexconn") return null;
+  if (!viewerCache.get(channelId)?.at) await refreshViewers(channelId);
+  return cachedViewers(channelId);
 }
 
 // ------------------------------------------------------------------ orders
@@ -139,17 +173,19 @@ export type OrderRow = {
   created_at: Date; paid_at: Date | null; shipped_at: Date | null; cancelled_at: Date | null;
 };
 
-/** The order and who is asking: its buyer, or active staff of its shop. 401 with no session, 403 otherwise. */
-export async function orderAccess(orderId: string): Promise<{ order: OrderRow; as: "buyer" } | { order: OrderRow; as: "staff"; staff: ActiveStaff }> {
+/**
+ * The order and who is asking: its buyer, or active staff of its shop. 401 with no session, 403 otherwise.
+ * `prefer` picks the role when one visitor holds both cookies and both may open it (judge mode: buyer + seller).
+ */
+export async function orderAccess(orderId: string, prefer: "buyer" | "staff" = "buyer"):
+  Promise<{ order: OrderRow; as: "buyer" } | { order: OrderRow; as: "staff"; staff: ActiveStaff }> {
   const [order] = await sql<OrderRow[]>`select * from orders where id = ${orderId}`;
   const [b, s] = await Promise.all([getBuyer(), getStaff()]);
   if (!b && !s) fail(401, "no_session", "Sign in first.");
   if (!order) return notFound();
-  if (b && b.buyerId === order.buyer_id) return { order, as: "buyer" };
-  if (s && s.shopId === order.shop_id) {
-    const staff = await activeStaff();
-    return { order, as: "staff", staff };
-  }
+  const asBuyer = !!b && b.buyerId === order.buyer_id, asStaff = !!s && s.shopId === order.shop_id;
+  if (asStaff && (prefer === "staff" || !asBuyer)) return { order, as: "staff", staff: await activeStaff() };
+  if (asBuyer) return { order, as: "buyer" };
   return forbidden();
 }
 

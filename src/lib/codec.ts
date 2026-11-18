@@ -6,13 +6,14 @@ export const ASSISTANT_ID = "dibs_assistant";
 export type VariantLive = { key: string; label: string; left: number; waiting: number };
 export type OrderState = "held" | "payment_claimed" | "paid" | "shipped" | "cancelled";
 
+/** Room cards (State, Item, Sold, Back, Stock, Hide) carry `dropId`: pooled judge-mode channels outlive a drop. */
 export type Card =
-  | { t: "DB:State"; v: number; status: "scheduled" | "live" | "ended"; liveItemId: string | null; startsAt: string }
-  | { t: "DB:Item"; v: number; itemId: string; position: number; title: string; pricePaise: number; note: string | null; photos: string[]; liveAt: string; variants: VariantLive[] }
-  | { t: "DB:Sold"; v: number; itemId: string; variant: string; variantLabel: string; buyer: string; isBot: boolean; ms: number; left: number }
-  | { t: "DB:Back"; v: number; itemId: string; variant: string; variantLabel: string; buyer: string | null; isBot: boolean; reason: "expired" | "released" | "cancelled" }
-  | { t: "DB:Stock"; v: number; itemId: string; state: "live" | "sold_out" | "closed"; variants: VariantLive[] }
-  | { t: "DB:Hide"; v: number; messageId: string }
+  | { t: "DB:State"; v: number; dropId?: string; status: "scheduled" | "live" | "ended"; liveItemId: string | null; startsAt: string }
+  | { t: "DB:Item"; v: number; dropId?: string; itemId: string; position: number; title: string; pricePaise: number; note: string | null; photos: string[]; liveAt: string; variants: VariantLive[] }
+  | { t: "DB:Sold"; v: number; dropId?: string; itemId: string; variant: string; variantLabel: string; buyer: string; isBot: boolean; ms: number; left: number }
+  | { t: "DB:Back"; v: number; dropId?: string; itemId: string; variant: string; variantLabel: string; buyer: string | null; isBot: boolean; reason: "expired" | "released" | "cancelled" }
+  | { t: "DB:Stock"; v: number; dropId?: string; itemId: string; state: "live" | "sold_out" | "closed"; variants: VariantLive[] }
+  | { t: "DB:Hide"; v: number; dropId?: string; messageId: string }
   | { t: "DB:Alert"; kind: "promoted" | "expiring" | "paid" | "shipped" | "not_received" | "expired" | "blocked" | "missed"; orderId: string | null; dropCode: string | null; text: string }
   | { t: "DB:Prompt"; itemId: string; position: number; variant: string | null; text: string }
   | { t: "DB:Order"; orderId: string; orderNo: number; item: string; variantLabel: string; pricePaise: number; expiresAt: string | null; photo: string | null }

@@ -95,6 +95,9 @@ Creating Nexconn channels and adding members is **not** done in SQL. SQL writes 
 | `SYS:DestroyRoom` | `{ channelId }` (row has `next_attempt_at` in the future) |
 | `SYS:RoomMeta` | `{ channelId, key: "db_state" \| "db_item", value: string }` |
 | `SYS:Mute` / `SYS:Ban` / `SYS:Unban` | `{ channelId, userId, minutes }` |
+| `SYS:LeaveGroup` | `{ channelId, memberIds: string[] }` (a removed staff member leaves the desk and order rooms) |
+
+Integration notes (0006): room cards carry `dropId`; the engine no longer writes `SYS:RoomMeta` (the drain mirrors `DB:State` / `DB:Item` / `DB:Stock` into metadata); `SYS:DestroyRoom` rows use channel key `destroy:<roomId>` so their 10-minute delay never holds back room cards.
 
 ## Database functions (the engine; `supabase/migrations/`)
 

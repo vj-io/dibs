@@ -1,7 +1,7 @@
 // The staff member's catalog: list and create.
 import { sql } from "@/lib/server/db";
 import { body, fail, json, route } from "@/lib/server/http";
-import { activeStaff, isShopPhoto, ProductFields, products } from "@/lib/server/queries";
+import { activeEditor, activeStaff, isShopPhoto, ProductFields, products } from "@/lib/server/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +11,7 @@ export const GET = route("GET /api/products", async () => {
 });
 
 export const POST = route("POST /api/products", async (req: Request) => {
-  const s = await activeStaff();
+  const s = await activeEditor();
   const b = await body(req, ProductFields);
   const photos = b.photos ?? [];
   if (photos.some((p) => !isShopPhoto(s.shopId, p))) fail(400, "invalid", "photos: upload each photo first.");

@@ -33,11 +33,18 @@ export type TryStart = {
   buyerId: string; ownerId: string; shopId: string; channelId: string; slot: number;
 };
 
-/** Resets the slot idle longest (never fails while the pool exists), schedules the script. */
+/** Every demo slot is in use right now. */
+export class DemoBusy extends Error {
+  retryInSeconds: number;
+  constructor(retryInSeconds: number) { super("demo_busy"); this.retryInSeconds = retryInSeconds; }
+}
+
+/** Resets the slot idle longest that nobody is using and schedules the script. Throws DemoBusy when all are in use. */
 export async function startTry(role: TryRole, name?: string): Promise<TryStart> {
   const given = name?.trim().slice(0, 40) || "";
   const display = given ? displayName(given) : `Guest ${randomInt(100, 1000)}`;
   const [{ r }] = await sql`select try_start(${role}, ${given || "You"}, ${display}) as r`;
+  if (r.busy) throw new DemoBusy(Number(r.retryInSeconds));
   const slot = await slotOf(r.dropId);
   if (!slot) throw new Error("try_start: slot not recorded");
   await scheduleStart(slot); // the runner (or the first tick) sends the room setup

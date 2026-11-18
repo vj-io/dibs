@@ -2,6 +2,9 @@
 // The buyer's phone only for staff. Staff opening an order room they are not in get added (outbox, idempotent).
 import { afterWrite } from "@/lib/server/after";
 import { sql } from "@/lib/server/db";
+import { flags } from "@/lib/server/flags";
+import { bus } from "@/lib/server/mockbus";
+import { drainOutbox } from "@/lib/server/outbox";
 import { json, route, uuidParam } from "@/lib/server/http";
 import { enqueue, orderAccess, sweep } from "@/lib/server/queries";
 import type { OrderView } from "@/lib/types";
@@ -10,19 +13,23 @@ import { upiLink } from "@/lib/upi";
 export const dynamic = "force-dynamic";
 type Ctx = { params: Promise<{ id: string }> };
 
-export const GET = route("GET /api/orders/:id", async (_req: Request, ctx: Ctx) => {
+export const GET = route("GET /api/orders/:id", async (req: Request, ctx: Ctx) => {
   const id = await uuidParam(ctx, "id");
-  const a = await orderAccess(id);
+  const a = await orderAccess(id, new URL(req.url).searchParams.get("as") === "staff" ? "staff" : "buyer");
   const o = a.order;
-  let wrote = await sweep(o.drop_id);
+  const wrote = await sweep(o.drop_id);
   if (a.as === "staff") {
-    const uid = `s_${a.staff.staffId}`;
-    const [member] = await sql`
-      select 1 from outbox where channel_id = ${o.nexconn_group_id} and msg_type = 'SYS:EnsureGroup' and payload->'memberIds' ? ${uid} limit 1`;
+    // Any staff of the shop may open any of its orders. Group history refuses non-members (mock and Nexconn alike),
+    // so the membership is in place before this answers: the client asks for history right after.
+    const uid = `s_${a.staff.staffId}`, group = o.nexconn_group_id;
+    const member = flags.mode === "mock" ? bus().history(group, uid) !== null
+      : (await sql`select 1 from outbox where channel_id = ${group} and msg_type = 'SYS:EnsureGroup' and status = 'sent'
+                     and payload->'memberIds' ? ${uid} limit 1`).length > 0;
     if (!member) {
-      await enqueue(o.drop_id, "group", o.nexconn_group_id, "SYS:EnsureGroup",
-        { channelId: o.nexconn_group_id, name: `Order #${o.order_no}`, memberIds: [uid] });
-      wrote = true;
+      const [queued] = await sql`select 1 from outbox where channel_id = ${group} and msg_type = 'SYS:EnsureGroup' and status = 'pending'
+                                   and payload->'memberIds' ? ${uid} limit 1`;
+      if (!queued) await enqueue(o.drop_id, "group", group, "SYS:EnsureGroup", { channelId: group, name: `Order #${o.order_no}`, memberIds: [uid] });
+      await drainOutbox({ channels: [group], budgetMs: 5000 });
     }
   }
   if (wrote) await afterWrite(o.drop_id);
@@ -65,7 +72,7 @@ export const GET = route("GET /api/orders/:id", async (_req: Request, ctx: Ctx) 
     shop: { id: o.shop_id, name: r.shop_name, slug: r.shop_slug, supportWhatsapp: r.support_whatsapp },
     payment: { upiId: r.upi_id, payee: r.payee, amountPaise: amount,
       upiLink: r.upi_id ? upiLink({ upiId: r.upi_id, payee: r.payee, amountPaise: amount, orderNo: o.order_no }) : null },
-    buyer: a.as === "staff" ? { displayName: r.buyer_name, phone: r.phone } : { displayName: r.buyer_name },
+    buyer: a.as === "staff" ? { displayName: r.buyer_name, phone: r.drop_sandbox ? null : r.phone /* demo sellers are anonymous */ } : { displayName: r.buyer_name },
     assignedTo: r.staff_id ? { staffId: r.staff_id, displayName: r.staff_name! } : null,
     nexconnGroupId: o.nexconn_group_id,
     history,

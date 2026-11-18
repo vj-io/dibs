@@ -7,12 +7,14 @@ import type { ShopSettings as Settings } from "@/lib/types";
 import { errMsg, useMe } from "./kit";
 import { ShopForm } from "./ShopForm";
 
+export const DEMO_NOTE = "The demo shop can't be edited. Create your own shop to try this.";
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function ShopSettings() {
   const me = useMe();
   const toast = useToast();
-  const owner = me.role === "owner";
+  const demo = me.shop.isSandbox; // the shared demo shop is read-only (the API refuses writes: demo_read_only)
+  const owner = me.role === "owner" && !demo;
   const [s, setS] = useState<Settings | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [inv, setInv] = useState({ email: "", name: "" });
@@ -52,7 +54,7 @@ export function ShopSettings() {
     <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px]">
       <section className="flex flex-col gap-4">
         <h1 className="text-3xl">Shop settings</h1>
-        {!owner && <p className="rounded-wobble border-2 border-ink bg-sky px-3 py-2 font-semibold">Only the shop owner can change these. You can see them here.</p>}
+        {!owner && <p className="rounded-wobble border-2 border-ink bg-sky px-3 py-2 font-semibold">{demo ? DEMO_NOTE : "Only the shop owner can change these. You can see them here."}</p>}
         <Sheet><ShopForm initial={s} readOnly={!owner} onSaved={setS} /></Sheet>
       </section>
       <section className="flex flex-col gap-4" aria-labelledby="team-h">
@@ -87,7 +89,7 @@ export function ShopSettings() {
               <Button type="submit" icon="plus" busy={busy === "invite"} busyLabel="Inviting…" className="self-start">Invite</Button>
             </form>
           </Sheet>
-        ) : <p className="text-muted">Only the owner can invite or remove team members.</p>}
+        ) : <p className="text-muted">{demo ? DEMO_NOTE : "Only the owner can invite or remove team members."}</p>}
       </section>
     </div>
   );

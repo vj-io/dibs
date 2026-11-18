@@ -1,9 +1,9 @@
 // API tests over real HTTP against a running server started with REALTIME_MODE=mock DIBS_TEST_LOGIN=1.
 // Run: API_BASE=http://localhost:3103 node --env-file=.env.local --test tests/api/*.test.ts
-// Every shop is flipped to sandbox right after creation (unique slugs) and deleted at the end, with its buyers.
+// Every shop is a normal shop (unique slug; demo shops are read-only and unjoinable) and is deleted at the end, with its buyers.
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
-import { randomInt, randomUUID } from "node:crypto";
+import { createHash, randomInt, randomUUID } from "node:crypto";
 import postgres from "postgres";
 
 const BASE = process.env.API_BASE ?? "http://localhost:3103";
@@ -57,7 +57,6 @@ async function seller(): Promise<{ c: Client; shopId: string; slug: string; staf
   const shop = await c.post("/api/shops", { name: "Test Shop", slug, upiId: "test@upi", payeeName: "Test & Sons", holdMinutes: 10, faq: ["Ships in 3 days"] });
   ok(shop);
   shops.push(shop.body.shopId);
-  await admin`update shops set is_sandbox = true where id = ${shop.body.shopId}`;
   return { c, shopId: shop.body.shopId, slug, staffId: shop.body.staffId, email };
 }
 
@@ -188,6 +187,8 @@ describe("Dibs API", () => {
     assert.equal(sv.body.trackingNote, "DTDC 123");
     const joined = await admin`select 1 from outbox where channel_id = ${sv.body.nexconnGroupId} and msg_type = 'SYS:EnsureGroup' and payload->'memberIds' ? ${"s_" + A.staffId}`;
     assert.ok(joined.length >= 1, "staff is in the order room");
+    // membership is in place by the time GET /api/orders/:id answers: group history right after must not be refused
+    ok(await A.c.get(`/api/mock/send?history=${sv.body.nexconnGroupId}&as=staff`));
 
     const deskRes = await A.c.get("/api/desk?assigned=all");
     ok(deskRes);
@@ -282,12 +283,18 @@ describe("Dibs API", () => {
     ok(await B.c.post("/api/drops", { title: "x", startsAt: new Date().toISOString(), productIds: [aProducts[0].id] }), 400);
     assert.equal((await B.c.get("/api/desk")).body.orders.shipped.length, 0, "desk shows only own shop");
 
-    // invited staff: activates on sign-in, can read the shop, cannot change settings; removal ends the session
+    // invited staff: can read the shop, cannot change settings; removal ends the session. A test sign-in never
+    // activates an invite (it proves nothing about the email), so the activation a real email code does is done here.
     const email = `t-${tag()}@dibs.test`;
     const inv = await A.c.post(`/api/shops/${A.shopId}/staff`, { email, name: "Asha" });
     ok(inv);
     assert.equal(inv.body.member.status, "pending");
     const sc = new Client();
+    const early = await sc.post("/api/seller/session", { testEmail: email });
+    assert.equal(early.body.needsShop, true, "test login does not take over a pending invite");
+    const h = createHash("sha256").update("dibs-test:" + email).digest("hex");
+    const uid = `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
+    await admin`update staff set id = ${uid}, active = true, nexconn_user_id = ${"s_" + uid} where id = ${inv.body.member.staffId}`;
     const s = await sc.post("/api/seller/session", { testEmail: email });
     ok(s);
     assert.equal(s.body.needsShop, false);
@@ -310,7 +317,37 @@ describe("Dibs API", () => {
     ok(await A.c.post(`/api/drops/${dropId}/moderate`, { buyerId: b5.id, action: "mute" }));
     assert.ok((await b5.c.get(`/api/drops/${dropId}/me`)).body.mutedUntil);
     ok(await A.c.post(`/api/drops/${dropId}/moderate`, { buyerId: b5.id, action: "unban" }));
+    // from a chat line: the Nexconn sender id instead of the buyer id
+    ok(await A.c.post(`/api/drops/${dropId}/moderate`, { userId: "b_" + b5.id, action: "mute" }));
+    assert.ok((await b5.c.get(`/api/drops/${dropId}/me`)).body.mutedUntil);
+    ok(await A.c.post(`/api/drops/${dropId}/moderate`, { userId: "b_" + b5.id, action: "unban" }));
+    ok(await A.c.post(`/api/drops/${dropId}/moderate`, { userId: "demo_bot_99", action: "mute" }), 404);
+    ok(await A.c.post(`/api/drops/${dropId}/moderate`, { userId: "s_x", action: "mute" }), 400);
     ok(await b5.c.post("/api/buyer/join", { name: "Vik Patel", phone: b5.phone, shopSlug: A.slug }));
+  });
+
+  test("join: a phone number never opens someone else's account; demo shops are read-only and not joinable", async () => {
+    const b6 = await buyer(A.slug, "Meera Iyer");
+    const thief = new Client();
+    const t = await thief.post("/api/buyer/join", { name: "Meera Iyer", phone: b6.phone, shopSlug: A.slug });
+    ok(t);
+    buyers.push(t.body.buyerId);
+    assert.notEqual(t.body.buyerId, b6.id, "same phone on another device is a new buyer");
+    const again = await b6.c.post("/api/buyer/join", { name: "Meera I", phone: b6.phone, shopSlug: A.slug });
+    assert.equal(again.body.buyerId, b6.id, "the cookie holder keeps their own row");
+    ok(await thief.post("/api/buyer/join", { name: "Call 9876543210", phone: b6.phone, shopSlug: A.slug }), 400);
+    ok(await thief.post("/api/buyer/join", { name: "pay@ybl", phone: b6.phone, shopSlug: A.slug }), 400);
+    ok(await thief.post("/api/buyer/join", { name: "Priya", phone: b6.phone, shopSlug: "demo-jewels-1" }), 403);
+    const demo = new Client();
+    const d = await demo.post("/api/try/start", { role: "seller" });
+    if (d.status === 503) return; // every demo room busy: nothing more to check here
+    ok(d);
+    const me = (await demo.get("/api/seller/me")).body.me;
+    const ro = await demo.patch(`/api/shops/${me.shop.id}`, { name: "Hacked" });
+    assert.equal(ro.status, 403);
+    assert.equal(ro.body.error, "demo_read_only");
+    assert.equal((await demo.post("/api/products", { title: "x", pricePaise: 1000, variants: [{ key: "a", label: "A", qty: 1 }] })).body.error, "demo_read_only");
+    ok(await demo.post(`/api/drops/${d.body.dropId}/end`));
   });
 
   test("validation failures", async () => {
@@ -321,9 +358,9 @@ describe("Dibs API", () => {
       assert.equal(x.body.error, code, x.text);
       assert.ok(x.body.message);
     };
-    await bad(anon.post("/api/buyer/join", { name: "X", phone: "12345", shopSlug: A.slug }), "invalid_phone");
+    await bad(anon.post("/api/buyer/join", { name: "Xi", phone: "12345", shopSlug: A.slug }), "invalid_phone");
     await bad(anon.post("/api/buyer/join", { name: "", phone: phone(), shopSlug: A.slug }));
-    await bad(anon.post("/api/buyer/join", { name: "X", phone: phone(), shopSlug: "no-such-shop-zz" }), "not_found", 404);
+    await bad(anon.post("/api/buyer/join", { name: "Xi", phone: phone(), shopSlug: "no-such-shop-zz" }), "not_found", 404);
     await bad(A.c.patch(`/api/shops/${A.shopId}`, { slug: "Bad Slug!" }));
     await bad(A.c.patch(`/api/shops/${A.shopId}`, { upiId: "not-a-upi" }));
     await bad(A.c.patch(`/api/shops/${A.shopId}`, { holdMinutes: 40 }));

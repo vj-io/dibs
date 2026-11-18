@@ -28,16 +28,23 @@ export class LiveError extends Error {
   constructor(code: string | number, message?: string) { super(message ?? `live ${code}`); this.code = String(code); this.name = "LiveError"; }
 }
 
-let cached: Promise<Live> | null = null;
-/** One live connection per page load. `as` picks the identity when both buyer and staff cookies exist. */
+type Conn = Live & { close(): void };
+let cached: { as?: "buyer" | "staff"; p: Promise<Conn> } | null = null;
+/**
+ * One live connection at a time. `as` picks the identity when both buyer and staff cookies exist (judge mode).
+ * Asking for the other identity (client-side navigation from a buyer room to the seller console) closes the old one.
+ */
 export function getLive(as?: "buyer" | "staff"): Promise<Live> {
-  if (cached) return cached;
+  if (cached && (!as || cached.as === as)) return cached.p;
+  if (cached) { const old = cached.p; old.then((l) => l.close(), () => {}); }
   const token = api("POST /api/nexconn/token", as ? { as } : undefined);
   token.catch(() => {});
-  cached = api("GET /api/config")
+  const entry: { as?: "buyer" | "staff"; p: Promise<Conn> } = { as, p: null as never };
+  entry.p = api("GET /api/config")
     .then(async (cfg) => (cfg.mode === "nexconn" && cfg.appKey ? nexconn(cfg, token, as) : mock((await token).userId, as)))
-    .catch((e) => { cached = null; throw e; });
-  return cached;
+    .catch((e) => { if (cached === entry) cached = null; throw e; });
+  cached = entry;
+  return entry.p;
 }
 
 // ---------------------------------------------------------------- shared helpers
@@ -80,6 +87,31 @@ const fromText = (id: string, channel: string, from: string, at: number, text: s
   return card ? { id, channel, from, fromName, at, kind: "card", card } : { id, channel, from, fromName, at, kind: "text", text };
 };
 
+/**
+ * Sender display names from our server (GET /api/names), never from the message: senderUserInfo and the SDK profile
+ * are both written by the sending client. Batched, cached for the page's life; unknown senders stay unnamed ("Buyer").
+ */
+function nameBook() {
+  const known = new Map<string, Promise<string | undefined>>();
+  let batch: Map<string, (n: string | undefined) => void> | null = null;
+  const flush = () => {
+    const b = batch!; batch = null;
+    api("GET /api/names", undefined, { ids: [...b.keys()].join(",") })
+      .then((r) => b.forEach((res, id) => res(r.names[id])), () => b.forEach((res, id) => { known.delete(id); res(undefined); }));
+  };
+  return (id: string): Promise<string | undefined> => {
+    if (id === BOT_ID) return Promise.resolve("Dibs");
+    let p = known.get(id);
+    if (!p) {
+      if (!batch) { batch = new Map(); setTimeout(flush, 30); }
+      const b = batch;
+      p = new Promise((res) => b.set(id, res));
+      known.set(id, p);
+    }
+    return p;
+  };
+}
+
 // ---------------------------------------------------------------- Nexconn Web SDK
 
 type NC = typeof import("@nexconn/chat");
@@ -88,7 +120,7 @@ const BACKOFF = [2000, 5000, 15000, 30000];
 const RECEIPTS_OFF = new Set([26314, 26315]);
 const KICKED = 31010; // signed in elsewhere: reconnecting would kick the other tab back
 
-async function nexconn(cfg: PublicConfig, firstToken: Promise<{ userId: string; name: string; token: string | null }>, as?: "buyer" | "staff"): Promise<Live> {
+async function nexconn(cfg: PublicConfig, firstToken: Promise<{ userId: string; name: string; token: string | null }>, as?: "buyer" | "staff"): Promise<Conn> {
   const nc = await import("@nexconn/chat");
   const me = await firstToken;
   const seen = seenSet();
@@ -105,10 +137,11 @@ async function nexconn(cfg: PublicConfig, firstToken: Promise<{ userId: string; 
     else if (s === nc.ConnectionStatus.DISCONNECTED && !kicked) { connecting = null; void connect().catch(() => {}); }
   });
 
+  const names = nameBook();
   const toLive = (m: NCMessage): LiveMsg | null => {
     const channel = m.channelIdentifier.channelId, from = m.senderUserId;
-    const c = (m.content ?? {}) as { text?: string; senderUserInfo?: { name?: string } } & Record<string, unknown>;
-    const fromName = c.senderUserInfo?.name || undefined;
+    const c = (m.content ?? {}) as { text?: string } & Record<string, unknown>;
+    const fromName = undefined; // filled from our server by `named` (never the client-supplied senderUserInfo)
     if (m.messageType === nc.MessageType.TEXT) return fromText(m.messageId, channel, from, m.sentTime, String(c.text ?? ""), fromName);
     const card = m.messageType.startsWith("DB:") ? decodeCard(from, { type: m.messageType, content: m.content }) : null;
     return card ? { id: m.messageId, channel, from, fromName, at: m.sentTime, kind: "card", card } : null; // other types: not ours
@@ -139,15 +172,21 @@ async function nexconn(cfg: PublicConfig, firstToken: Promise<{ userId: string; 
         const msg = toLive(m);
         if (!msg) continue;
         const t = m.channelIdentifier.channelType;
-        if (t === nc.ChannelType.OPEN) rooms.get(msg.channel)?.emit(msg);
-        else if (t === nc.ChannelType.GROUP) groups.get(msg.channel)?.emit(msg);
-        else if ((t === nc.ChannelType.DIRECT || t === nc.ChannelType.SYSTEM) && msg.from === BOT_ID && msg.card && ALERTS.has(msg.card.t)) alerts.emit(msg.card);
+        if ((t === nc.ChannelType.DIRECT || t === nc.ChannelType.SYSTEM) && msg.from === BOT_ID && msg.card && ALERTS.has(msg.card.t)) { alerts.emit(msg.card); continue; }
+        const emit = (x: LiveMsg) => {
+          if (t === nc.ChannelType.OPEN) rooms.get(x.channel)?.emit(x);
+          else if (t === nc.ChannelType.GROUP) groups.get(x.channel)?.emit(x);
+        };
+        if (msg.kind === "card") emit(msg); // cards first, without waiting on a name
+        else void named(msg).then(emit);
       }
     },
     onMessageReceiptResponse({ responses }) {
       receipts.emit(responses.map((r) => ({ id: r.messageId, read: r.readCount, total: r.totalCount })));
     },
   }));
+
+  const named = async (x: LiveMsg): Promise<LiveMsg> => ({ ...x, fromName: await names(x.from) });
 
   const enter = async (id: string) => {
     const r = await new nc.OpenChannel(id).enterChannel({ messageCount: 20 });
@@ -211,7 +250,8 @@ async function nexconn(cfg: PublicConfig, firstToken: Promise<{ userId: string; 
       const r = await nc.BaseChannel.createMessagesQuery({ channelIdentifier: new nc.GroupChannelIdentifier(id), pageSize: 50, isAscending: false }).loadNextPage();
       if (!r.isOk || !r.data) throw new LiveError(r.code, `history ${r.code}`);
       // the page with isAscending:false (latest page) came back already oldest-first in the POC; sort to be sure
-      return r.data.data.map(toLive).filter((m): m is LiveMsg => !!m).sort((a, b) => a.at - b.at);
+      const ms = r.data.data.map(toLive).filter((m): m is LiveMsg => !!m);
+      return (await Promise.all(ms.map((m) => (m.kind === "text" ? named(m) : m)))).sort((a, b) => a.at - b.at);
     },
     async sendText(target, text) {
       await ready();
@@ -230,22 +270,24 @@ async function nexconn(cfg: PublicConfig, firstToken: Promise<{ userId: string; 
     },
     onReceipts: receipts.on,
     onAlert: alerts.on,
+    close() { kicked = true; clearTimeout(retry); void nc.NCEngine.disconnect().catch(() => {}); },
   };
 }
 
 // ---------------------------------------------------------------- mock (SSE)
 
-function mock(userId: string, as?: "buyer" | "staff"): Live {
+function mock(userId: string, as?: "buyer" | "staff"): Conn {
   const seen = seenSet();
   const rooms = new Map<string, ReturnType<typeof hub<LiveMsg>>>();
   const groups = new Map<string, ReturnType<typeof hub<LiveMsg>>>();
   const alerts = hub<Card>();
-  let es: EventSource | null = null;
-  const st = statusHub(() => open());
+  let es: EventSource | null = null, closed = false;
+  const st = statusHub(() => { if (!closed) open(); });
 
   const toLive = (m: MockMsg) => fromText(m.id, m.channel, m.from, m.at, m.text, m.fromName);
   function open() {
     es?.close();
+    if (closed) return;
     const q = new URLSearchParams({ rooms: [...rooms.keys()].join(",") });
     if (as) q.set("as", as);
     es = new EventSource(`/api/mock/stream?${q}`);
@@ -291,5 +333,6 @@ function mock(userId: string, as?: "buyer" | "staff"): Live {
     markRead() {},
     onReceipts: () => () => {},
     onAlert: alerts.on,
+    close() { closed = true; es?.close(); },
   };
 }

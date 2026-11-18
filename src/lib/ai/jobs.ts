@@ -50,10 +50,12 @@ export async function answerQuestion(text: string, faq: string[], live: LiveKnow
 const RiskSchema = z.object({ risk: z.enum(["none", "suspicious", "scam"]) });
 export type ScamVerdict = { action: "block" | "review" | "pass"; rule: string };
 
-export async function scamVerdict(text: string): Promise<ScamVerdict> {
+/** `aiAllowed` is asked only for a borderline message; false = no model call, the message goes to review. */
+export async function scamVerdict(text: string, aiAllowed: () => Promise<boolean> = async () => true): Promise<ScamVerdict> {
   const r = scamRules(text);
   if (r.blocked) return { action: "block", rule: r.rule! };
   if (!borderline(text)) return { action: "pass", rule: "" };
+  if (!(await aiAllowed())) return { action: "review", rule: "throttled" };
   const out = await generateJson("scam", RiskSchema,
     `You moderate the public chat of a live sale in India. Only the seller's team may share contact or payment details; buyers must pay inside the app. ` +
     `Rate the message: "scam" = clearly tries to take a buyer off the platform or collect money or contact details; "suspicious" = might be; "none" = normal chat. ` +

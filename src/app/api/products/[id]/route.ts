@@ -4,14 +4,14 @@
 // point at it. Delete is refused once the product has been in any drop (deleting would cascade to its orders).
 import { sql } from "@/lib/server/db";
 import { body, fail, json, notFound, route, uuidParam } from "@/lib/server/http";
-import { activeStaff, isShopPhoto, ProductFields, products } from "@/lib/server/queries";
+import { activeEditor, isShopPhoto, ProductFields, products } from "@/lib/server/queries";
 
 export const dynamic = "force-dynamic";
 type Ctx = { params: Promise<{ id: string }> };
 
 async function own(ctx: Ctx) {
   const id = await uuidParam(ctx, "id");
-  const s = await activeStaff();
+  const s = await activeEditor();
   const [p] = await products(s.shopId, id);
   return p ? { s, p } : notFound();
 }

@@ -114,8 +114,8 @@ export async function slotOf(dropId: string): Promise<Slot | null> {
   if (hit) return hit;
   const [r] = await sql`
     select t.slot, t.role, t.judge_id, t.shop_id, t.channel_id,
-           (select id from staff where shop_id = t.shop_id and role = 'owner') as owner_id,
-           (select id from staff where shop_id = t.shop_id and role = 'staff' order by created_at limit 1) as staff_id
+           (select id from staff where shop_id = t.shop_id and role = 'owner' and active order by created_at desc limit 1) as owner_id,
+           (select id from staff where shop_id = t.shop_id and role = 'staff' and active order by created_at desc limit 1) as staff_id
       from try_slots t where t.drop_id = ${dropId}`;
   if (!r) return null;
   const s: Slot = { slot: r.slot, dropId, role: r.role, judgeId: r.judge_id, shopId: r.shop_id, channelId: r.channel_id, ownerId: r.owner_id, staffId: r.staff_id };

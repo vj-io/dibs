@@ -71,6 +71,8 @@ export type DropState = {
   dropId: string; code: string; title: string; status: DropStatus; startsAt: string; version: number; isSandbox: boolean;
   channelId: string; shop: { id: string; name: string; slug: string; logoUrl: string | null };
   live: LiveItem | null; items: DropItemRow[]; recent: (CardOf<"DB:Sold"> | CardOf<"DB:Back">)[];
+  /** People in the sale room (Nexconn participant count, cached ~5 s); null = not measured (mock mode or lookup failed). */
+  viewers: number | null;
 };
 
 /** The calling buyer's own claims in one drop (`my_status`). mutedUntil "infinity" = muted with no end. */
@@ -169,6 +171,7 @@ export type Api = {
 
   // buyer session
   "POST /api/buyer/join": { req: { name: string; phone: string; shopSlug: string }; res: { buyerId: string; displayName: string } };
+  "GET /api/names": { req: undefined; res: { names: Record<string, string> } };
   "GET /api/buyer/me": { req: undefined; res: { buyer: BuyerSelf | null } };
   "GET /api/me": { req: undefined; res: MyAccount };
   "DELETE /api/me": { req: undefined; res: { ok: true; released: number; left: number; kept: number } };
@@ -200,7 +203,7 @@ export type Api = {
   "POST /api/drops/:id/items/:itemId/close": { req: undefined; res: { ok: true; liveItemId: string | null } };
   "POST /api/drops/:id/items/:itemId/reopen": { req: undefined; res: { ok: true; liveItemId: string | null } };
   "POST /api/drops/:id/heartbeat": { req: undefined; res: Heartbeat };
-  "POST /api/drops/:id/moderate": { req: { buyerId: string; action: "mute" | "ban" | "unban"; minutes?: number; reason?: string }; res: Ok };
+  "POST /api/drops/:id/moderate": { req: { buyerId?: string; userId?: string; action: "mute" | "ban" | "unban"; minutes?: number; reason?: string }; res: Ok };
   "GET /api/drops/:id/dashboard": { req: undefined; res: DropDashboard };
 
   // buying (public / buyer)
@@ -225,7 +228,7 @@ export type Api = {
   // system
   "GET /api/impact": { req: undefined; res: ImpactTotals };
   "GET /api/health": { req: undefined; res: HealthReport };
-  "GET /api/cron/sweep": { req: undefined; res: { drops: number; expired: number; promoted: number; returned: number; warned: number; outbox: { sent: number; failed: number; pending: number } } };
+  "GET /api/cron/sweep": { req: undefined; res: { drops: number; endedDemos: number; expired: number; promoted: number; returned: number; warned: number; outbox: { sent: number; failed: number; more: boolean } } };
 
   // judge mode (WP7)
   "POST /api/try/start": { req: { role: "buyer" | "seller"; name?: string }; res: { dropId: string; code: string; shopSlug: string; shareUrl: string; role: "buyer" | "seller"; script: { atMs: number | null; text: string }[] } };

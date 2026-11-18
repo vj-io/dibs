@@ -2,7 +2,9 @@
 // released and waitlists left through the engine; paid / shipped order rows stay for the seller.
 import { afterWrite } from "@/lib/server/after";
 import { fn, sql } from "@/lib/server/db";
+import { flags } from "@/lib/server/flags";
 import { fail, json, route } from "@/lib/server/http";
+import { issueToken } from "@/lib/server/nexconn";
 import { clearBuyer, requireBuyer } from "@/lib/server/session";
 import type { BuyerSelf, MeOrder, MyAccount } from "@/lib/types";
 
@@ -49,7 +51,19 @@ export const DELETE = route("DELETE /api/me", async () => {
       : await fn<{ ok: boolean }>("leave_waitlist", c.id, buyer.id);
     if (r.ok) { drops.add(c.drop_id); if (c.state === "held") released++; else left++; }
   }
-  await sql`update buyers set name = 'Deleted buyer', display_name = 'Deleted buyer', phone = null, deleted_at = now() where id = ${buyer.id}`;
+  await sql.begin(async (tx) => {
+    // Sold / Back cards (ticker history, drop_state.recent) carry the display name, not the buyer id: scrub the ones
+    // for this buyer's claims (same drop, piece, size and name)
+    await tx`update outbox o set payload = jsonb_set(o.payload, '{buyer}', '"Deleted buyer"')
+              from claims c join product_variants pv on pv.id = c.variant_id
+             where c.buyer_id = ${buyer.id} and o.drop_id = c.drop_id and o.msg_type in ('DB:Sold', 'DB:Back')
+               and o.payload->>'itemId' = c.drop_item_id::text and o.payload->>'variant' = pv.key
+               and o.payload->>'buyer' = ${buyer.displayName}`;
+    await tx`update orders set utr = null where buyer_id = ${buyer.id}`;
+    await tx`update buyers set name = 'Deleted buyer', display_name = 'Deleted buyer', phone = null, deleted_at = now() where id = ${buyer.id}`;
+  });
+  // the chat service keeps the name it was given at token time: overwrite it
+  if (flags.mode === "nexconn") await issueToken(`b_${buyer.id}`, "Deleted buyer").catch(() => {});
   await clearBuyer();
   if (drops.size) await afterWrite(null);
   return json({ ok: true, released, left, kept });

@@ -2,7 +2,7 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { body, fail, json, route } from "@/lib/server/http";
-import { activeStaff } from "@/lib/server/queries";
+import { activeEditor } from "@/lib/server/queries";
 import { rateLimit } from "@/lib/server/ratelimit";
 import { PHOTO_BUCKET, photoPrefix, service } from "@/lib/server/supabase";
 
@@ -12,7 +12,7 @@ const EXT = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" } as
 const Body = z.object({ contentType: z.enum(["image/jpeg", "image/png", "image/webp"]) });
 
 export const POST = route("POST /api/products/upload-url", async (req: Request) => {
-  const s = await activeStaff();
+  const s = await activeEditor();
   const b = await body(req, Body);
   await rateLimit(`upload:${s.shopId}`, 60, 60);
   const name = `${randomUUID()}.${EXT[b.contentType]}`;

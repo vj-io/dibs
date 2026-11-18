@@ -11,7 +11,7 @@ function fakeSender() {
   const calls: unknown[][] = [];
   const rec = (name: string) => async (...a: unknown[]) => { calls.push([name, ...a]); };
   const s = {
-    ensureRoom: rec("ensureRoom"), destroyRoom: rec("destroyRoom"), setRoomMeta: rec("setRoomMeta"), ensureGroup: rec("ensureGroup"),
+    ensureRoom: rec("ensureRoom"), destroyRoom: rec("destroyRoom"), setRoomMeta: rec("setRoomMeta"), ensureGroup: rec("ensureGroup"), leaveGroup: rec("leaveGroup"),
     mute: rec("mute"), ban: rec("ban"), unban: rec("unban"), card: rec("card"),
   } as Sender;
   return { s, calls };
@@ -28,6 +28,7 @@ test("execute: SYS rows go to the matching Server API call", async () => {
   await execute(row("SYS:Ban", { channelId: "dr_ABC123", userId: "b_1", minutes: 60 }), s);
   await execute(row("SYS:Unban", { channelId: "dr_ABC123", userId: "b_1" }), s);
   await execute(row("SYS:DestroyRoom", { channelId: "dr_ABC123" }), s);
+  await execute(row("SYS:LeaveGroup", { channelId: "desk_x", memberIds: ["s_2"] }, "group"), s);
   assert.deepEqual(calls, [
     ["ensureGroup", "ord_x", "Order 7", ["b_1", "s_2"]],
     ["ensureRoom", "dr_ABC123"],
@@ -36,6 +37,7 @@ test("execute: SYS rows go to the matching Server API call", async () => {
     ["ban", "dr_ABC123", "b_1", 60],
     ["unban", "dr_ABC123", "b_1"],
     ["destroyRoom", "dr_ABC123"],
+    ["leaveGroup", "desk_x", ["s_2"]],
   ]);
 });
 

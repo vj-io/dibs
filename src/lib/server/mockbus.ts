@@ -22,6 +22,7 @@ class Bus {
     members.forEach((m) => g.members.add(m));
     this.groups.set(id, g);
   }
+  leaveGroup(id: string, members: string[]) { const g = this.groups.get(id); members.forEach((m) => g?.members.delete(m)); }
   setMeta(id: string, kv: Record<string, string>) { this.meta.set(id, { ...this.meta.get(id), ...kv }); }
 
   mute(room: string, user: string, minutes: number) { this.ensureRoom(room); this.rooms.get(room)!.muted.set(user, Date.now() + minutes * 60_000); }

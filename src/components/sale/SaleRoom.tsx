@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/client/api";
 import { getLive, type Live, type LiveMsg, type LiveStatus } from "@/lib/client/live";
-import { applyCard, mergeState, tickerKey } from "@/lib/client/sale";
+import { applyCard, forOtherDrop, mergeState, tickerKey } from "@/lib/client/sale";
 import { useNow, useOnline, useTryTick } from "@/lib/client/hooks";
 import { tapTime, type Card } from "@/lib/codec";
 import type { ClaimResult, DropState, MyStatus } from "@/lib/types";
@@ -65,7 +65,8 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
   const joinedRef = useRef(false);
   const verRef = useRef(0);
   // Judge-mode rooms reuse a pool of channels: the join replay can carry the previous visitor's cards and chat, whose
-  // versions belong to another drop. Anything sent before this sandbox drop started is not ours.
+  // versions belong to another drop. Room cards say their drop (dropped below when it isn't this one); as a second
+  // line, anything sent before this sandbox drop started is not ours (that also covers the previous visitor's chat).
   const floorRef = useRef(0);
   const waitsRef = useRef<Set<string>>(new Set());
   const previewRef = useRef(!!preview);
@@ -76,7 +77,7 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
 
   // ------------------------------------------------------------ data
   const loadMe = useCallback(async () => {
-    if (!navigator.onLine) return; // the online event brings a catch-up fetch
+    if (previewRef.current || !navigator.onLine) return; // preview (seller console) is staff: no buyer routes; offline: the online event catches up
     const startedAt = performance.now();
     try {
       const m = await api("GET /api/drops/:id/me", undefined, { id: dropId });
@@ -139,6 +140,7 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
       if (m.at < floorRef.current) return;
       if (m.kind === "card" && m.card) {
         const c = m.card;
+        if (forOtherDrop(c, dropId)) return;
         const log = dibsDebug().cards; // last cards seen, for tests and debugging
         log.push(`${c.t}${"v" in c ? ` v${c.v}` : ""}${"liveItemId" in c ? ` ${String(c.liveItemId).slice(0, 8)}` : "itemId" in c ? ` ${c.itemId.slice(0, 8)}` : ""}`);
         if (log.length > 60) log.shift();
@@ -175,7 +177,7 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
       setTimeout(() => setLiveTry((n) => n + 1), 5000); // getLive forgets a failed attempt; try again
     });
     return () => { gone = true; offs.forEach((f) => f()); liveRef.current = null; };
-  }, [canLive, channelId, preview, refreshMe, refreshState, toast, liveTry]);
+  }, [canLive, channelId, dropId, preview, refreshMe, refreshState, toast, liveTry]);
 
   // HTTP fallback: every 2 s while the live connection is not up (and always for a visitor who hasn't joined)
   const connected = canLive && status === "connected";
@@ -184,10 +186,10 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
     const t = setInterval(() => { if (!navigator.onLine) return; void loadState(); if (joined) void loadMe(); }, 2000);
     return () => clearInterval(t);
   }, [connected, missing, joined, loadState, loadMe]);
-  // safety net while connected: a card stuck in the server's outbox must not freeze the room (state only, every 8 s)
+  // safety net while connected: a lost card must not freeze the room for long (state only, every 30 s)
   useEffect(() => {
     if (!connected || missing || state?.status === "ended") return;
-    const t = setInterval(() => { if (navigator.onLine && document.visibilityState === "visible") void loadState(); }, 8000);
+    const t = setInterval(() => { if (navigator.onLine && document.visibilityState === "visible") void loadState(); }, 30_000);
     return () => clearInterval(t);
   }, [connected, missing, state?.status, loadState]);
   // back from a drop: catch up once
@@ -341,7 +343,10 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
             <span className="truncate">{state.shop.name}</span>
           </span>}
           live={state.status === "live"}
-          right={<Link href="/me" className="inline-flex min-h-12 items-center gap-1 rounded-md px-2 font-semibold underline decoration-2"><Icon name="bag" size={18} />My stuff</Link>}
+          right={<span className="flex items-center gap-1">
+            {state.viewers != null && <span className="inline-flex items-center gap-1 px-1 font-mono text-sm" data-testid="room-viewers"><Icon name="users" size={16} />{state.viewers} watching</span>}
+            <Link href="/me" className="inline-flex min-h-12 items-center gap-1 rounded-md px-2 font-semibold underline decoration-2"><Icon name="bag" size={18} />My stuff</Link>
+          </span>}
         />
       )}
       {preview && (

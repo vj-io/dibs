@@ -29,8 +29,8 @@ export async function userFromToken(accessToken: string): Promise<AuthUser> {
   return { id: data.user.id, email: data.user.email.toLowerCase() };
 }
 
-/** Test-only sign-in: on when DIBS_TEST_LOGIN=1 outside production. The id is derived from the email. */
-export const testLoginEnabled = () => process.env.DIBS_TEST_LOGIN === "1" && process.env.VERCEL_ENV !== "production";
+/** Test-only sign-in: DIBS_TEST_LOGIN=1 and never on any Vercel deployment (VERCEL is set there). Id derived from the email. */
+export const testLoginEnabled = () => process.env.DIBS_TEST_LOGIN === "1" && !process.env.VERCEL;
 export function testUser(email: string): AuthUser {
   const h = createHash("sha256").update("dibs-test:" + email.toLowerCase()).digest("hex");
   return { id: `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`, email: email.toLowerCase() };

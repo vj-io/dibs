@@ -15,6 +15,9 @@ export function mergeState(cur: DropState | null, next: DropState): DropState {
   return next;
 }
 
+/** A room card stamped with another drop (pooled judge-mode channel, previous visitor): not ours, drop it. */
+export const forOtherDrop = (c: Card, dropId: string) => "dropId" in c && !!c.dropId && c.dropId !== dropId;
+
 const setItemState = (s: DropState, itemId: string, state: LiveItem["state"]) =>
   s.items.map((i) => (i.itemId === itemId ? { ...i, state } : i));
 

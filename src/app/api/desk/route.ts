@@ -20,7 +20,7 @@ export const GET = route("GET /api/desk", async (req: Request) => {
   const who = q.assigned === "me" ? s.staffId : q.assigned === "all" ? null : q.assigned;
   const rows = await sql<{ o: DeskOrder }[]>`
     select to_jsonb(x) - 'rn' as o from (
-      select o.id as "orderId", o.order_no as "orderNo", o.state, b.display_name as buyer, b.phone, p.title as item,
+      select o.id as "orderId", o.order_no as "orderNo", o.state, b.display_name as buyer, case when d.is_sandbox then null else b.phone end as phone, p.title as item, -- no phones in demo shops
              pv.label as "variantLabel", o.amount_paise::float8 as "amountPaise",
              case when st.id is null then null else json_build_object('staffId', st.id, 'displayName', st.display_name) end as "assignedTo",
              case when o.state = 'held' and c.state = 'held' then c.expires_at end as "expiresAt", o.created_at as "createdAt",

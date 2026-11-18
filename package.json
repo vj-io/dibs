@@ -10,7 +10,10 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test \"src/**/*.test.ts\"",
     "test:db": "node --env-file=.env.local --test \"tests/db/*.test.ts\"",
-    "db:apply": "node --env-file=.env.local scripts/db-apply.mjs"
+    "db:apply": "node --env-file=.env.local scripts/db-apply.mjs",
+    "test:sandbox": "node --env-file=.env.local --test --test-concurrency=1 \"tests/sandbox/*.test.ts\"",
+    "test:api": "API_BASE=${API_BASE:-http://localhost:3100} node --env-file=.env.local --test \"tests/api/*.test.ts\"",
+    "test:e2e": "~/.claude/brag-scaled-venv/bin/python tests/e2e/buyer_flow.py all && ~/.claude/brag-scaled-venv/bin/python tests/e2e/seller_flow.py"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.122",

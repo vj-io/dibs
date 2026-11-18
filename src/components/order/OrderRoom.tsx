@@ -23,7 +23,7 @@ const ENDED: Record<string, { word: string; why: (v: OrderView, note: string | n
   hold_cancelled: { word: "Cancelled", why: (_, n) => `The shop cancelled this hold${n ? `: ${n}` : "."}` },
 };
 
-export function OrderRoom({ orderId, viewer, embedded }: { orderId: string; viewer: "buyer" | "staff"; embedded?: boolean }) {
+export function OrderRoom({ orderId, viewer: asked, embedded }: { orderId: string; viewer: "buyer" | "staff"; embedded?: boolean }) {
   const toast = useToast();
   const phone = useIsPhone();
   const [view, setView] = useState<OrderView | null>(null);
@@ -44,14 +44,16 @@ export function OrderRoom({ orderId, viewer, embedded }: { orderId: string; view
 
   const load = useCallback(async () => {
     try {
-      setView(await api("GET /api/orders/:id", undefined, { id: orderId }));
+      setView(await api("GET /api/orders/:id", undefined, { id: orderId, as: asked === "staff" ? "staff" : undefined }));
       setProblem(null);
     } catch (e) {
       const s = e instanceof ApiError ? e.status : 0;
       if (s === 0) return; // offline: keep what we show, the next poll tries again
       setProblem(s === 404 || s === 403 || s === 400 ? "missing" : s === 401 ? "auth" : "error");
     }
-  }, [orderId]);
+  }, [orderId, asked]);
+  // the server decides who is looking (a visitor holding both judge cookies may be either); its answer picks the identity
+  const viewer = view?.viewer ?? asked;
   const reload = useCallback((ms = 250) => {
     if (loadTimer.current) clearTimeout(loadTimer.current);
     loadTimer.current = setTimeout(() => { void load(); }, ms);
@@ -109,7 +111,9 @@ export function OrderRoom({ orderId, viewer, embedded }: { orderId: string; view
         return next;
       })));
       offs.push(live.onAlert((c) => { if (c.t === "DB:Alert" && c.orderId === orderId) reload(0); }));
-      live.history(groupId).then((h) => { if (!gone) add(live, h); }, () => {});
+      // history is for members only; GET /api/orders/:id made us one, so a refusal is a race: one more try
+      const hist = () => live.history(groupId).then((h) => { if (!gone) add(live, h); });
+      hist().catch(() => setTimeout(() => { if (!gone) hist().catch(() => {}); }, 1500));
     }, () => setStatus("offline"));
     return () => { gone = true; offs.forEach((f) => f()); liveRef.current = null; };
   }, [groupId, viewer, orderId, reload]);

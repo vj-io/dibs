@@ -76,10 +76,16 @@ export async function handleRoomText(m: RoomText, deps: TextDeps = realDeps): Pr
   if (from.startsWith("b_") && UUID.test(from.slice(2))) buyerId = from.slice(2);
   else if (from.startsWith("demo_bot_")) buyerId = (await sql`select id from buyers where is_bot and nexconn_user_id = ${from}`)[0]?.id ?? null;
   if (buyerId && !(await sql`select 1 from buyers where id = ${buyerId}`).length) buyerId = null;
+  // Only a known sender is acted on: a buyer that exists or a demo bot. Staff ids (tokens come only from our server)
+  // are never moderated; anything else (a forged or replayed body naming a stranger) is ignored.
+  if (!isStaff && (!buyerId || from.startsWith("s_"))) return "ignored";
 
   // (a) scam shield: everyone except the shop's team
   if (!isStaff) {
-    const v = await deps.scamVerdict(text);
+    // a model call per borderline message, at most 1 per buyer per 10 s and 6 per room per minute
+    const aiAllowed = async () => (await take(`scamai:${buyerId}`, 10))
+      && Number((await sql`select rate_add(${`scamai:${m.channelId}`}, 60) as n`)[0].n) <= 6;
+    const v = await deps.scamVerdict(text, aiAllowed);
     if (v.action === "block") {
       await sql`insert into moderation_events (drop_id, buyer_id, nexconn_msg_id, rule, action) values (${ctx.drop_id}, ${buyerId}, ${m.messageId}, ${v.rule}, 'blocked')`;
       if (flags.mode === "nexconn") {
@@ -153,6 +159,9 @@ export type WebhookOpts = { defer?: (job: () => Promise<unknown>) => void; deps?
 /** POST /api/nexconn/webhook. Answers fast (Nexconn waits 5 s); the pipeline runs in `defer` (after() in the route). */
 export async function handleWebhook(req: Request, o: WebhookOpts = {}): Promise<Response> {
   if (!nx.verifyWebhook(req.headers, o.creds, o.now)) return Response.json({ error: "bad_signature" }, { status: 401 });
+  // the signature covers nonce + timestamp only, so a captured header set is good for one body, once
+  const nonce = `${req.headers.get("Nonce")}:${req.headers.get("Timestamp")}`;
+  if (!(await sql`select webhook_nonce_take(${nonce}) as ok`)[0].ok) return Response.json({ error: "replayed" }, { status: 409 });
   let body: Hook;
   try { body = JSON.parse(await req.text()); } catch { return Response.json({ error: "invalid" }, { status: 400 }); }
   const msgs = roomTexts(body);

@@ -179,7 +179,7 @@ test("sandbox orders never count in impact_totals()", async () => {
   }
 });
 
-test("a human's sandbox hold is extended to 90 s once; walking away still hands it on", { timeout: 60_000 }, async () => {
+test("a human's sandbox hold is 90 s from the start; walking away still hands it on", { timeout: 60_000 }, async () => {
   const s = await startTry("buyer", "Walk Away");
   try {
     await cancelPending(s.dropId);
@@ -192,13 +192,14 @@ test("a human's sandbox hold is extended to 90 s once; walking away still hands 
     assert.equal(await fn("sandbox_extend_holds", s.dropId), 0, "bots keep 20 s");
     await sql`update claims set expires_at = clock_timestamp() - interval '1 second' where drop_item_id = ${p1.id} and buyer_id = ${b1.id}`;
     await fn("sweep_drop", s.dropId);
-    const v0 = Number((await sql`select version from drops where id = ${s.dropId}`)[0].version);
-    assert.equal(await fn("sandbox_extend_holds", s.dropId), 1);
-    assert.equal(await fn("sandbox_extend_holds", s.dropId), 0, "idempotent");
+    // the promotion itself gives the human 90 s (no 20 s card or alert first); the extender has nothing left to do
+    assert.equal(await fn("sandbox_extend_holds", s.dropId), 0, "already 90 s at promotion");
     const [c] = await sql`select id, order_id, (extract(epoch from (expires_at - promoted_at)))::int as s, expires_at from claims
                            where drop_item_id = ${p1.id} and buyer_id = ${s.buyerId} and state = 'held'`;
     assert.equal(c.s, 90);
-    assert.equal(Number((await sql`select version from drops where id = ${s.dropId}`)[0].version), v0 + 1);
+    const [alert] = await sql`select payload from outbox where drop_id = ${s.dropId} and msg_type = 'DB:Alert' and payload->>'kind' = 'promoted'
+                                and payload->>'orderId' = ${c.order_id}`;
+    assert.equal(alert.payload.text, "It's yours! The buyer ahead didn't pay. Pay within 01:30");
     const [card] = await sql`select o.channel_id, o.payload from outbox o join orders r on r.nexconn_group_id = o.channel_id
                               where r.id = ${c.order_id} and o.msg_type = 'DB:Order' order by o.id desc limit 1`;
     assert.equal(new Date(card.payload.expiresAt).getTime(), new Date(c.expires_at).getTime(), "order rooms get the new timer");

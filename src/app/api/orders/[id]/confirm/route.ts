@@ -12,7 +12,7 @@ const Body = z.object({ received: z.boolean(), note: z.string().trim().max(200).
 
 export const POST = route("POST /api/orders/:id/confirm", async (req: Request, ctx: Ctx) => {
   const id = await uuidParam(ctx, "id");
-  const { order, staff } = staffOfOrder(await orderAccess(id));
+  const { order, staff } = staffOfOrder(await orderAccess(id, "staff"));
   const b = await body(req, Body);
   engineOk(await fn<{ ok: boolean; error?: string }>("order_confirm", id, staff.staffId, b.received, b.note ?? null));
   await afterWrite(order.drop_id);

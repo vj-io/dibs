@@ -37,10 +37,11 @@ export function RoomChat({ dropId, msgs, send, ownerIds, bans, names, onChanged,
     return { label: "System", tint: "sky", buyerId: null };
   };
 
-  const moderate = async (buyerId: string, action: "mute" | "ban" | "unban", name: string) => {
-    setBusy(`${buyerId}:${action}`);
+  /** Moderation by the chat sender's Nexconn id (b_<uuid> or demo_bot_NN); the server resolves the buyer. */
+  const moderate = async (userId: string, action: "mute" | "ban" | "unban", name: string) => {
+    setBusy(`${userId}:${action}`);
     try {
-      await api("POST /api/drops/:id/moderate", { buyerId, action, ...(action === "mute" ? { minutes: 10 } : {}) }, { id: dropId });
+      await api("POST /api/drops/:id/moderate", { userId, action, ...(action === "mute" ? { minutes: 10 } : {}) }, { id: dropId });
       toast(action === "mute" ? `${name} muted for 10 minutes` : action === "ban" ? `${name} banned from this shop's drops` : `${name} can chat again`, { tone: "good" });
       setMenu(null);
       onChanged();
@@ -72,7 +73,7 @@ export function RoomChat({ dropId, msgs, send, ownerIds, bans, names, onChanged,
                 {w.label !== name && <Badge size="sm" tint={w.tint}>{w.label}</Badge>}
                 {ban && <Badge size="sm" tint={ban.kind === "ban" ? "pink" : "peach"} icon="lock">{ban.kind === "ban" ? "Banned" : "Muted"}</Badge>}
                 <span className="ml-auto font-mono text-sm text-muted">{clock(m.at)}</span>
-                {w.buyerId !== null || m.from.startsWith("demo_bot_") ? (
+                {m.from.startsWith("b_") || m.from.startsWith("demo_bot_") ? (
                   <button type="button" aria-label={`Moderate ${name}`} aria-expanded={menu === m.id} onClick={() => setMenu(menu === m.id ? null : m.id)}
                     className="-my-2 grid size-12 place-items-center rounded-full font-extrabold">⋯</button>
                 ) : null}
@@ -80,13 +81,9 @@ export function RoomChat({ dropId, msgs, send, ownerIds, bans, names, onChanged,
               <p className="break-words">{m.text}</p>
               {menu === m.id && (
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {w.buyerId ? (
-                    <>
-                      <Button size="sm" variant="ghost" icon="pause" busy={busy === `${w.buyerId}:mute`} busyLabel="Muting…" onClick={() => moderate(w.buyerId!, "mute", name)}>Mute 10 min</Button>
-                      <Button size="sm" variant="danger" icon="lock" busy={busy === `${w.buyerId}:ban`} busyLabel="Banning…" onClick={() => moderate(w.buyerId!, "ban", name)}>Ban</Button>
-                      {ban && <Button size="sm" variant="ghost" icon="check" busy={busy === `${w.buyerId}:unban`} busyLabel="Lifting…" onClick={() => moderate(w.buyerId!, "unban", name)}>Unban</Button>}
-                    </>
-                  ) : <p className="text-[0.95rem] text-muted">This demo buyer hasn&apos;t claimed yet, so it can&apos;t be picked out. Use the moderation log below once the scam shield flags it.</p>}
+                  <Button size="sm" variant="ghost" icon="pause" busy={busy === `${m.from}:mute`} busyLabel="Muting…" onClick={() => moderate(m.from, "mute", name)}>Mute 10 min</Button>
+                  <Button size="sm" variant="danger" icon="lock" busy={busy === `${m.from}:ban`} busyLabel="Banning…" onClick={() => moderate(m.from, "ban", name)}>Ban</Button>
+                  {ban && <Button size="sm" variant="ghost" icon="check" busy={busy === `${m.from}:unban`} busyLabel="Lifting…" onClick={() => moderate(m.from, "unban", name)}>Unban</Button>}
                 </div>
               )}
             </li>

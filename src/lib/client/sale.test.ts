@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyCard, mergeState, tickerKey } from "./sale.ts";
+import { applyCard, forOtherDrop, mergeState, tickerKey } from "./sale.ts";
 import type { DropState } from "../types.ts";
 
 const base: DropState = {
@@ -9,7 +9,7 @@ const base: DropState = {
   live: { t: "DB:Item", v: 4, itemId: "i1", position: 1, title: "Ring", pricePaise: 100, note: null, photos: [], liveAt: "", state: "live",
     variants: [{ key: "m", label: "M", left: 2, waiting: 0 }] },
   items: [{ itemId: "i1", position: 1, title: "Ring", pricePaise: 100, photo: null, state: "live" }],
-  recent: [],
+  recent: [], viewers: null,
 };
 
 test("a newer Sold card lowers stock and adds one ticker line; a repeat adds nothing", () => {
@@ -40,4 +40,11 @@ test("Stock marks the item sold out; State with another live item clears the car
 test("HTTP state older than what we hold is ignored", () => {
   assert.equal(mergeState(base, { ...base, version: 2, status: "ended" }).status, "live");
   assert.equal(mergeState(base, { ...base, version: 9, status: "ended" }).status, "ended");
+});
+
+test("room cards stamped with another drop are not ours; unstamped and own cards are", () => {
+  const card = { t: "DB:State", v: 99, status: "ended", liveItemId: null, startsAt: base.startsAt } as const;
+  assert.equal(forOtherDrop({ ...card, dropId: "other" }, "d"), true);
+  assert.equal(forOtherDrop({ ...card, dropId: "d" }, "d"), false);
+  assert.equal(forOtherDrop(card, "d"), false);
 });

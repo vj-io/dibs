@@ -8,7 +8,8 @@ export type Area = "SG" | "NA" | "SA";
 export const flags = (() => {
   const a = process.env.NEXCONN_AREA?.toUpperCase();
   return {
-    mode: (process.env.REALTIME_MODE === "mock" ? "mock" : "nexconn") as "nexconn" | "mock",
+    // production always uses Nexconn, whatever REALTIME_MODE says (the mock bus is one process, no auth)
+    mode: (process.env.REALTIME_MODE === "mock" && process.env.VERCEL_ENV !== "production" ? "mock" : "nexconn") as "nexconn" | "mock",
     appKey: process.env.NEXCONN_APP_KEY ?? "",
     area: (a === "NA" || a === "SA" ? a : "SG") as Area,
     textEnvelope: on(process.env.NEXCONN_TEXT_ENVELOPE),

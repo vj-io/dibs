@@ -5,7 +5,8 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { BottomSheet, Button, Card, EmptyState, Field, Icon, Input, Price, Skeleton, Textarea, useToast } from "@/components/ui";
 import { api } from "@/lib/client/api";
 import type { Product, Variant } from "@/lib/types";
-import { errMsg, uploadPhoto } from "./kit";
+import { errMsg, uploadPhoto, useMe } from "./kit";
+import { DEMO_NOTE } from "./ShopSettings";
 
 type Row = { key: string | null; label: string; qty: string };
 type Draft = { id: string | null; title: string; price: string; note: string; photos: string[]; rows: Row[] };
@@ -44,6 +45,7 @@ function check(d: Draft) {
 
 export function Products() {
   const toast = useToast();
+  const demo = useMe().shop.isSandbox; // the shared demo shop's catalog is read-only
   const [list, setList] = useState<Product[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [d, setD] = useState<Draft | null>(null);
@@ -111,8 +113,9 @@ export function Products() {
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-3xl">Products</h1>
-        <Button icon="plus" onClick={() => open()}>Add a piece</Button>
+        {!demo && <Button icon="plus" onClick={() => open()}>Add a piece</Button>}
       </div>
+      {demo && <p className="rounded-wobble border-2 border-ink bg-sky px-3 py-2 font-semibold" data-testid="demo-note">{DEMO_NOTE}</p>}
 
       {err ? <EmptyState icon="warning" title="Couldn't load your products." body={err} action={<Button onClick={() => { setErr(null); void load(); }}>Try again</Button>} />
         : !list ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-28" />)}</div>
@@ -129,10 +132,10 @@ export function Products() {
                     <p className="truncate font-extrabold">{p.title}</p>
                     <Price paise={p.pricePaise} size="sm" />
                     <p className="text-sm text-muted">{total(p)} in stock · {p.variants.map((v) => v.label).join(", ")}</p>
-                    <div className="mt-auto flex gap-2 pt-2">
+                    {!demo && <div className="mt-auto flex gap-2 pt-2">
                       <Button size="sm" variant="ghost" onClick={() => open(p)} aria-label={`Edit ${p.title}`}>Edit</Button>
                       <Button size="sm" variant="ghost" icon="trash" onClick={() => { setDelErr(null); setDel(p); }} aria-label={`Delete ${p.title}`}>Delete</Button>
-                    </div>
+                    </div>}
                   </div>
                 </Card>
               </li>

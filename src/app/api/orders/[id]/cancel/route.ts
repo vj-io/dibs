@@ -12,7 +12,7 @@ const Body = z.object({ reason: z.string().trim().min(1).max(200) });
 
 export const POST = route("POST /api/orders/:id/cancel", async (req: Request, ctx: Ctx) => {
   const id = await uuidParam(ctx, "id");
-  const { order, staff } = staffOfOrder(await orderAccess(id));
+  const { order, staff } = staffOfOrder(await orderAccess(id, "staff"));
   const b = await body(req, Body);
   engineOk(await fn<{ ok: boolean; error?: string }>("release_claim", order.claim_id, "staff", staff.staffId, b.reason));
   await afterWrite(order.drop_id);

@@ -42,7 +42,9 @@ test("a win writes order, outbox in order with codec shapes, and no phone number
   assert.equal(r.result, "won");
   assert.ok(r.claimId && r.orderId && r.expiresAt && typeof r.ms === "number");
   const rows = await outbox(f.dropId, from);
-  assert.deepEqual(rows.map((x) => x.msg_type), ["SYS:EnsureGroup", "DB:Order", "DB:Pay", "DB:Desk", "DB:Sold", "DB:Stock", "SYS:RoomMeta"]);
+  assert.deepEqual(rows.map((x) => x.msg_type), ["SYS:EnsureGroup", "DB:Order", "DB:Pay", "DB:Desk", "DB:Sold", "DB:Stock"]);
+  // room cards say which drop they belong to (pooled judge-mode channels); the drain, not the engine, mirrors metadata
+  for (const x of rows.filter((r) => r.channel_type === "room")) assert.equal(x.payload.dropId, f.dropId);
   rows.forEach(checkShape);
   const [order] = await admin`select * from orders where id = ${r.orderId}`;
   assert.equal(order.state, "held");
@@ -60,8 +62,6 @@ test("a win writes order, outbox in order with codec shapes, and no phone number
   assert.equal(rows[4].priority, "high");
   assert.equal(rows[4].payload.buyer, "Buyer0 T.");
   assert.equal(rows[4].payload.left, 0);
-  assert.equal(rows[6].payload.key, "db_item");
-  assert.equal(JSON.parse(rows[6].payload.value).t, "DB:Stock");
   assert.equal(rows[2].payload.upiLink, `upi://pay?pa=test@upi&pn=Test%20%26%20Sons&am=1450.00&cu=INR&tn=Dibs%20order%20${order.order_no}`);
   assert.equal(rows[5].payload.state, "live", "L is still in stock");
   // second variant sells: item becomes sold_out
@@ -101,6 +101,66 @@ test("hold limit counts held + payment_claimed across items of a drop", async ()
   assert.equal((await staffCall("drop_next", f.dropId, f.ownerId)).ok, true);
   assert.equal((await claim(f.items[2].id, "M", b)).result, "too_many_holds");
   assert.equal(o.result, "won");
+});
+
+test("a buyer promoted past max_holds keeps the promotion but cannot claim more while at or over the limit", async () => {
+  const f = await makeFixture({ items: [1, 2, 3].map(() => ({ variants: [{ key: "M", qty: 1 }] })), buyers: 2, maxHolds: 1 });
+  const [a, b] = f.buyers;
+  const p1 = await claim(f.items[0].id, "M", a);
+  assert.equal(p1.result, "won");                                     // a: 1 hold = the limit
+  assert.equal((await staffCall("drop_next", f.dropId, f.ownerId)).ok, true);
+  const p2 = await claim(f.items[1].id, "M", b);
+  assert.equal(p2.result, "won");
+  assert.equal((await claim(f.items[1].id, "M", a)).result, "waitlisted", "queueing is not a hold");
+  await forceExpire([p2.claimId]);
+  assert.equal((await sweep(f.dropId)).promoted, 1, "promoted although at the limit: they queued in good faith");
+  const held = await admin`select count(*)::int as n from claims where drop_id = ${f.dropId} and buyer_id = ${a} and state = 'held'`;
+  assert.equal(held[0].n, 2);
+  assert.equal((await staffCall("drop_next", f.dropId, f.ownerId)).ok, true);
+  assert.equal((await claim(f.items[2].id, "M", a)).result, "too_many_holds", "over the limit: no further claims");
+  assert.equal((await release(p1.claimId, "buyer", a)).ok, true);
+  assert.equal((await claim(f.items[2].id, "M", a)).result, "too_many_holds", "back at the limit: still none");
+});
+
+test("status cards name the staff member who confirmed and shipped", async () => {
+  const f = await makeFixture({ items: [{ variants: [{ key: "M", qty: 1 }] }], buyers: 1, staff: 1 });
+  const w = await claim(f.items[0].id, "M", f.buyers[0]);
+  const from = await maxOutbox(f.dropId);
+  const staff = f.staffIds[1];
+  assert.equal((await call("order_confirm", [[w.orderId, "uuid"], [staff, "uuid"], [true, "boolean"], [null, "text"]])).ok, true);
+  assert.equal((await call("order_ship", [[w.orderId, "uuid"], [staff, "uuid"], [null, "text"]])).ok, true);
+  const by = (await outbox(f.dropId, from)).filter((x) => x.msg_type === "DB:Status").map((x) => [x.payload.state, x.payload.by]);
+  assert.deepEqual(by, [["paid", "Staff 0"], ["shipped", "Staff 0"]]);
+});
+
+test("a banned or deleted buyer at the head of the waitlist is skipped, not promoted; a ban ends waitlist places", async () => {
+  const f = await makeFixture({ items: [{ variants: [{ key: "M", qty: 1 }] }], buyers: 4 });
+  const [holder, banned, gone, next] = f.buyers;
+  const h = await claim(f.items[0].id, "M", holder);
+  for (const b of [banned, gone, next]) assert.equal((await claim(f.items[0].id, "M", b)).result, "waitlisted");
+  await admin`insert into bans (shop_id, buyer_id, kind) values (${f.shopId}, ${banned}, 'ban')`;
+  await admin`update buyers set deleted_at = now() where id = ${gone}`;
+  await forceExpire([h.claimId]);
+  assert.equal((await sweep(f.dropId)).promoted, 1);
+  const st = await admin`select buyer_id, state, ended_reason from claims where drop_item_id = ${f.items[0].id} order by committed_at`;
+  assert.deepEqual(st.map((x) => [x.buyer_id, x.state, x.ended_reason]),
+    [[holder, "expired", "expired"], [banned, "left", "banned"], [gone, "left", "banned"], [next, "held", null]]);
+  // ban_leave_waitlists: a newly banned buyer leaves every waitlist of the shop's open drops
+  const other = f.buyers[0];
+  assert.equal((await claim(f.items[0].id, "M", other)).result, "waitlisted");
+  assert.equal(await call("ban_leave_waitlists", [[f.shopId, "uuid"], [other, "uuid"]]), 1);
+  assert.equal((await admin`select state from claims where buyer_id = ${other} and drop_item_id = ${f.items[0].id} order by committed_at desc limit 1`)[0].state, "left");
+});
+
+test("a /try visitor (sandbox buyer) cannot claim in a real drop; phones are not unique", async () => {
+  const f = await makeFixture({ items: [{ variants: [{ key: "M", qty: 2 }] }], buyers: 2 });
+  await admin`update drops set is_sandbox = false where id = ${f.dropId}`;
+  assert.equal((await claim(f.items[0].id, "M", f.buyers[0])).result, "banned", "fixture buyers are sandbox buyers");
+  await admin`update buyers set is_sandbox = false where id = ${f.buyers[1]}`;
+  assert.equal((await claim(f.items[0].id, "M", f.buyers[1])).result, "won");
+  const [{ phone }] = await admin`select phone from buyers where id = ${f.buyers[1]}`;
+  const [dup] = await admin`insert into buyers (name, display_name, phone) values ('Same Phone', 'Same P.', ${phone}) returning id`;
+  await admin`delete from buyers where id = ${dup.id}`;
 });
 
 test("claims on queued, closed, scheduled and ended items are refused; unknown variant", async () => {
@@ -163,7 +223,7 @@ test("sweep expires, promotes in order, returns stock when nobody waits; second 
 
   await forceExpire([a.claimId]);
   const from = await maxOutbox(f.dropId);
-  assert.deepEqual(await sweep(f.dropId), { expired: 1, promoted: 1, returned: 0, warned: 0 });
+  assert.deepEqual(await sweep(f.dropId), { expired: 1, promoted: 1, returned: 0, warned: 0, missed: 0 });
   assert.equal((await claimRow(a.claimId)).state, "expired");
   const pb = await claimRow(b.claimId);
   assert.equal(pb.state, "held");
@@ -182,7 +242,7 @@ test("sweep expires, promotes in order, returns stock when nobody waits; second 
   assert.equal(me.waits[0].waitPosition, 1);
 
   const s1 = await snapshot(f.dropId);
-  assert.deepEqual(await sweep(f.dropId), { expired: 0, promoted: 0, returned: 0, warned: 0 });
+  assert.deepEqual(await sweep(f.dropId), { expired: 0, promoted: 0, returned: 0, warned: 0, missed: 0 });
   assert.deepEqual(await snapshot(f.dropId), s1);
 
   await forceExpire([b.claimId]);
@@ -190,7 +250,7 @@ test("sweep expires, promotes in order, returns stock when nobody waits; second 
   assert.equal((await claimRow(c.claimId)).state, "held");
   await forceExpire([c.claimId]);
   const from2 = await maxOutbox(f.dropId);
-  assert.deepEqual(await sweep(f.dropId), { expired: 1, promoted: 0, returned: 1, warned: 0 });
+  assert.deepEqual(await sweep(f.dropId), { expired: 1, promoted: 0, returned: 1, warned: 0, missed: 0 });
   const [st] = await admin`select available from item_stock where drop_item_id = ${item}`;
   assert.equal(st.available, 1);
   assert.equal((await admin`select state from drop_items where id = ${item}`)[0].state, "live");
@@ -287,6 +347,10 @@ test("drop_end marks waitlisters with no hold ahead as missed", async () => {
   const missed = await admin`select payload from outbox where drop_id = ${f.dropId} and msg_type = 'DB:Alert' and payload->>'kind' = 'missed'`;
   assert.equal(missed.length, 1);
   assert.equal(missed[0].payload.text, "Missed it this time");
+  // the delayed room teardown has its own channel key, so it never holds back room cards
+  const [destroy] = await admin`select channel_id, payload from outbox where drop_id = ${f.dropId} and msg_type = 'SYS:DestroyRoom'`;
+  assert.equal(destroy.channel_id, "destroy:dr_" + f.code);
+  assert.equal(destroy.payload.channelId, "dr_" + f.code);
   await forceExpire([a.claimId]);
   assert.equal((await sweep(f.dropId)).promoted, 1);
   assert.equal((await claimRow(b.claimId)).state, "held");

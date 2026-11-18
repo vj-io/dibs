@@ -195,6 +195,11 @@ export async function ensureGroup(channelId: string, name: string, memberIds: st
   if (b.code === GROUP_EXISTS) await addGroupMembers(channelId, userIds);
 }
 
+/** Removes members from a group (a removed staff member leaves the desk and their order rooms). */
+export async function leaveGroup(channelId: string, userIds: string[]): Promise<void> {
+  await call("group_leave", "/v4/group-channel/leave", { channelId, userIds });
+}
+
 export async function addGroupMembers(channelId: string, userIds: string[]): Promise<void> {
   await call("group_join", "/v4/group-channel/join", { channelId, userIds });
 }

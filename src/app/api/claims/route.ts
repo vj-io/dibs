@@ -36,8 +36,9 @@ export const POST = route("POST /api/claims", async (req: Request) => {
   const input = await body(req, Body);
   const [, meta] = await Promise.all([
     rateLimit(`claim:${b.buyerId}`, 5, 1, "Easy! One tap is enough."),
+    // a human in a judge-mode drop holds for 90 s (_hold_secs in 0006); buyers here are never bots
     sql<{ drop_id: string; hold_seconds: number; max_holds: number }[]>`
-      select i.drop_id, s.hold_seconds, s.max_holds from drop_items i join drops d on d.id = i.drop_id join shops s on s.id = d.shop_id
+      select i.drop_id, case when exists (select 1 from try_slots t where t.drop_id = d.id) then 90 else s.hold_seconds end as hold_seconds, s.max_holds from drop_items i join drops d on d.id = i.drop_id join shops s on s.id = d.shop_id
        where i.id = ${input.itemId}`,
   ]);
   if (!meta[0]) notFound();

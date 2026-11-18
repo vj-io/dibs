@@ -14,9 +14,9 @@ const key = () => {
   return new TextEncoder().encode(s);
 };
 
-async function write(name: string, payload: BuyerSession | StaffSession) {
-  const token = await new SignJWT(payload).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime(`${MAX_AGE}s`).sign(key());
-  (await cookies()).set(name, token, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: MAX_AGE });
+async function write(name: string, payload: BuyerSession | StaffSession, maxAge = MAX_AGE) {
+  const token = await new SignJWT(payload).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime(`${maxAge}s`).sign(key());
+  (await cookies()).set(name, token, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge });
 }
 async function read<T>(name: string, kind: string): Promise<T | null> {
   const token = (await cookies()).get(name)?.value;
@@ -28,7 +28,8 @@ async function read<T>(name: string, kind: string): Promise<T | null> {
 }
 
 export const setBuyer = (buyerId: string) => write(BUYER, { kind: "buyer", buyerId });
-export const setStaff = (s: Omit<StaffSession, "kind">) => write(STAFF, { kind: "staff", ...s });
+/** `maxAgeSec`: judge mode's demo owner gets 2 hours, not 30 days. */
+export const setStaff = (s: Omit<StaffSession, "kind">, maxAgeSec?: number) => write(STAFF, { kind: "staff", ...s }, maxAgeSec);
 export const clearBuyer = async () => { (await cookies()).delete(BUYER); };
 export const clearStaff = async () => { (await cookies()).delete(STAFF); };
 export const getBuyer = () => read<BuyerSession>(BUYER, "buyer");

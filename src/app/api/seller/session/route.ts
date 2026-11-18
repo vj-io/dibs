@@ -22,13 +22,14 @@ const Body = z.union([
 export const POST = route("POST /api/seller/session", async (req: Request) => {
   const b = await body(req, Body);
   let user;
+  const test = !("accessToken" in b);
   if ("accessToken" in b) user = await userFromToken(b.accessToken);
   else if (testLoginEnabled()) user = testUser(b.testEmail);
   else return fail(400, "invalid", "accessToken is required.");
 
   let [st] = await sql<{ id: string; shop_id: string; role: "owner" | "staff" }[]>`
     select id, shop_id, role from staff where id = ${user.id} and active`;
-  if (!st) {
+  if (!st && !test) { // a test sign-in never activates a real invite (it proves no ownership of the email)
     const [invite] = await sql<{ id: string }[]>`
       select id from staff where lower(email) = ${user.email} and not active and email is not null order by created_at desc limit 1`;
     if (invite) {
