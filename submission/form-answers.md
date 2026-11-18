@@ -3,7 +3,7 @@
 Form: https://reskilll.com/hack/nexconn/dashboard/submit
 Team: **Kaching** (Vaibhav Jangid). One submission per team. Deadline 22 Nov 2026, 23:59 IST.
 
-Field limits used here come from `docs/research-crowdplay-judging.md` (title 5 to 200 characters, summary 10 to 2000, SDK features at least 30, prior-work details at least 10, App Key 8 to 64 characters). Check each field against the live form before pasting. Any value `TBD-after-measurement` is yours to fill.
+Field limits used here come from the submission form (title 5 to 200 characters, summary 10 to 2000, SDK features at least 30, prior-work details at least 10, App Key 8 to 64 characters). Check each field against the live form before pasting. Any value `TBD-after-measurement` is yours to fill.
 
 ## Step 2: Track
 
