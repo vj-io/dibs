@@ -1,4 +1,4 @@
-// Safety-net sweep (Supabase pg_cron every minute, Vercel cron daily), Bearer CRON_SECRET: sweeps live drops and
+// Safety-net sweep (Supabase pg_cron every minute, Vercel cron daily), protected by the cron bearer secret. Sweeps live drops and
 // ended drops that still have holds or waitlists, then drains the outbox. Timing goes to health_events.
 import { createHash, timingSafeEqual } from "node:crypto";
 import { fn, sql } from "@/lib/server/db";
