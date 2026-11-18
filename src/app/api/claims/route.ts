@@ -3,10 +3,8 @@
 import { after } from "next/server";
 import { z } from "zod";
 import { afterWrite } from "@/lib/server/after";
-import { fn, sql, withConn } from "@/lib/server/db";
-import { body, json, notFound, route } from "@/lib/server/http";
-import { sweep } from "@/lib/server/queries";
-import { rateLimit } from "@/lib/server/ratelimit";
+import { rpc } from "@/lib/server/db";
+import { body, fail, json, notFound, route } from "@/lib/server/http";
 import { requireBuyer } from "@/lib/server/session";
 import type { ClaimOutcome, ClaimResult } from "@/lib/types";
 
@@ -34,18 +32,12 @@ export const POST = route("POST /api/claims", async (req: Request) => {
   const receivedAt = new Date();
   const b = await requireBuyer();
   const input = await body(req, Body);
-  const [, meta] = await Promise.all([
-    rateLimit(`claim:${b.buyerId}`, 5, 1, "Easy! One tap is enough."),
-    // a human in a judge-mode drop holds for 90 s (_hold_secs in 0006); buyers here are never bots
-    withConn(() => sql<{ drop_id: string; hold_seconds: number; max_holds: number }[]>`
-      select i.drop_id, case when exists (select 1 from try_slots t where t.drop_id = d.id) then 90 else s.hold_seconds end as hold_seconds, s.max_holds from drop_items i join drops d on d.id = i.drop_id join shops s on s.id = d.shop_id
-       where i.id = ${input.itemId}`),
-  ]);
-  if (!meta[0]) notFound();
-  const { drop_id: dropId } = meta[0];
-  if (await sweep(dropId)) await afterWrite(dropId); // an expired hold ahead hands its unit on before this tap queues
-  const r = await fn<Omit<ClaimResult, "message">>("claim_dibs", input.itemId, input.variantKey, b.buyerId, receivedAt);
+  // one round trip: rate limit, item lookup, sweep of expired holds ahead of this tap, then the claim (api_claim, 0007)
+  const r = await rpc<{ rateLimited?: boolean; notFound?: boolean; dropId: string; maxHolds: number; holdSeconds: number; swept: boolean; claim: Omit<ClaimResult, "message"> }>(
+    "api_claim", { p_item: input.itemId, p_variant_key: input.variantKey, p_buyer: b.buyerId, p_received: receivedAt.toISOString() });
+  if (r.rateLimited) fail(429, "rate_limited", "Easy! One tap is enough.");
+  if (r.notFound) notFound();
   // the buyer gets the result at once; the drain starts the moment the response is sent (same instance, waitUntil)
-  if (r.result === "won" || r.result === "waitlisted") after(() => afterWrite(dropId));
-  return json({ ...r, message: message(r, meta[0]) } satisfies ClaimResult);
+  if (r.swept || r.claim.result === "won" || r.claim.result === "waitlisted") after(() => afterWrite(r.dropId));
+  return json({ ...r.claim, message: message(r.claim, { hold_seconds: r.holdSeconds, max_holds: r.maxHolds }) } satisfies ClaimResult);
 });

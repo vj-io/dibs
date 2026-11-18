@@ -52,6 +52,41 @@ export async function withConn<T>(run: () => Promise<T>): Promise<T> {
 /** Calls a jsonb-returning engine function: `await fn<ClaimResult>("claim_dibs", item, variant, buyer, receivedAt)`. */
 export async function fn<T>(name: string, ...args: (string | number | boolean | Date | null)[]): Promise<T> {
   if (!/^[a-z_]+$/.test(name)) throw new Error("bad function name");
+  if (rpcReady()) return rpc<T>("api_call", { p_fn: name, p_args: args.map((a) => (a instanceof Date ? a.toISOString() : a)) });
   const rows = await withConn(() => sql.unsafe(`select ${name}(${args.map((_, i) => `$${i + 1}`).join(", ")}) as r`, args as never[]));
   return rows[0].r as T;
+}
+
+const rpcReady = () => process.env.DB_RPC !== "0" && !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+/**
+ * Calls a Postgres function over HTTP (Supabase PostgREST) with the service role. No Postgres connection is held by
+ * this instance, so a tap burst across hundreds of instances queues at PostgREST instead of failing at the pooler
+ * (migration 0007). Retries only when the request did not get an answer from the database (network, 502/503/504):
+ * the engine functions are safe to repeat (a repeated claim returns `already` with the same claim).
+ */
+export async function rpc<T>(name: string, params: Record<string, unknown>): Promise<T> {
+  if (!/^[a-z_]+$/.test(name)) throw new Error("bad function name");
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  let last: unknown;
+  for (let i = 0; i < 3; i++) {
+    if (i) await new Promise((r) => setTimeout(r, 120 * i + Math.random() * 120));
+    let res: Response;
+    try {
+      res = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/rpc/${name}`, {
+        method: "POST",
+        headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+        body: JSON.stringify(params),
+        signal: AbortSignal.timeout(20_000),
+        cache: "no-store",
+      });
+    } catch (e) { last = e; continue; }
+    if (res.status === 502 || res.status === 503 || res.status === 504) { last = new Error(`rpc ${name}: HTTP ${res.status}`); continue; }
+    if (!res.ok) {
+      const err = (await res.json().catch(() => ({}))) as { code?: string; message?: string };
+      throw Object.assign(new Error(`rpc ${name}: ${err.message ?? `HTTP ${res.status}`}`), { code: err.code });
+    }
+    return (await res.json()) as T;
+  }
+  throw last instanceof Error ? last : new Error(`rpc ${name} failed`);
 }
