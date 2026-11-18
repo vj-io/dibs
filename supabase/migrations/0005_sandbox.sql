@@ -173,6 +173,30 @@ begin
   return v_r;
 end $$;
 
+-- Demo: a human in a sandbox drop gets 90 s to pay (bots keep the shop's 20 s). Run by the runner/tick every second.
+-- Idempotent: each hold is extended once (demo_extended_at), counted from when it became held. claim_dibs is untouched.
+alter table claims add column if not exists demo_extended_at timestamptz;
+
+create or replace function sandbox_extend_holds(p_drop uuid) returns int language plpgsql as $$
+declare r record; n int := 0;
+begin
+  if not exists (select 1 from claims c join buyers b on b.id = c.buyer_id join drops d on d.id = c.drop_id
+                  where c.drop_id = p_drop and d.is_sandbox and c.state = 'held' and c.demo_extended_at is null and not b.is_bot) then
+    return 0;
+  end if;
+  perform 1 from drops where id = p_drop for no key update;                            -- lock 1: drop
+  for r in select c.id, c.order_id from claims c join buyers b on b.id = c.buyer_id
+            where c.drop_id = p_drop and c.state = 'held' and c.demo_extended_at is null and not b.is_bot
+            for update of c loop
+    update claims set expires_at = coalesce(promoted_at, committed_at) + interval '90 seconds', demo_extended_at = clock_timestamp()
+     where id = r.id;
+    perform _out(p_drop, 'group', (select nexconn_group_id from orders where id = r.order_id), 'DB:Order', _order_card(r.order_id));
+    n := n + 1;
+  end loop;
+  if n > 0 then perform _bump(p_drop); end if;
+  return n;
+end $$;
+
 select sandbox_seed();
 
 do $$

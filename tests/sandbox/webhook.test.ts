@@ -1,0 +1,148 @@
+// Webhook / sale-room text pipeline with synthetic signed requests and injected model fakes (no AI quota).
+// Real Postgres, mock transport, one sandbox slot.
+import "./env.ts";
+import { test, after, before } from "node:test";
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { claimIntent } from "../../src/lib/ai/claim-helper.ts";
+import { scamRules } from "../../src/lib/ai/scam-shield.ts";
+import { cancelPending } from "../../src/lib/server/bots.ts";
+import { fn, sql } from "../../src/lib/server/db.ts";
+import { bus } from "../../src/lib/server/mockbus.ts";
+import { drainOutbox } from "../../src/lib/server/outbox.ts";
+import { startTry, type TryStart } from "../../src/lib/server/sandbox.ts";
+import { BLOCKED_TEXT, handlePreMessage, handleRoomText, handleWebhook, roomTexts, type TextDeps } from "../../src/lib/server/webhook.ts";
+
+const creds = { appKey: "test-key", appSecret: "test-secret" };
+function signed(body: unknown, at = Date.now(), secret = creds.appSecret): Request {
+  const nonce = Math.random().toString(36).slice(2), ts = String(at);
+  return new Request("http://x/api/nexconn/webhook", {
+    method: "POST", body: JSON.stringify(body),
+    headers: { AppKey: creds.appKey, Nonce: nonce, Timestamp: ts, Signature: createHash("sha1").update(secret + nonce + ts).digest("hex") },
+  });
+}
+const msgBody = (channelId: string, userId: string, text: string, messageId = "m_" + Math.random().toString(36).slice(2)) => ({
+  type: "message:send", id: "e1", time: Date.now(),
+  data: [{ userId, channelId, channelType: 4, messageType: "RC:TxtMsg", content: JSON.stringify({ content: text }), time: Date.now(), messageId, os: "Websocket" }],
+});
+
+let calls: string[] = [];
+const said: string[] = [];
+const fakes: TextDeps = {
+  scamVerdict: async (t) => { calls.push("scam"); const r = scamRules(t); return r.blocked ? { action: "block", rule: r.rule! } : /dm me/i.test(t) ? { action: "review", rule: "ai" } : { action: "pass", rule: "" }; },
+  resolveClaimIntent: async (t, live, recent) => { calls.push("claim"); const r = claimIntent(t, live, recent); return r.kind === "unclear" ? { kind: "none" } : r; },
+  answerQuestion: async () => { calls.push("answer"); return "Ships in 3–5 days."; },
+  sendAssistant: async (_ch, text) => { said.push(text); },
+};
+
+let s: TryStart;
+let ch: string;
+const judge = () => "b_" + s.buyerId;
+const id = () => "m_" + Math.random().toString(36).slice(2);
+
+before(async () => {
+  s = await startTry("buyer", "Hook Tester");
+  await cancelPending(s.dropId);                        // no scripted bots: this file drives the room itself
+  await sql`select sandbox_next(${s.dropId}, ${s.ownerId}, 0, null, null)`;
+  ch = s.channelId;
+  await sql`delete from throttles where key like ${"%" + ch + "%"}`;
+});
+after(async () => {
+  await fn("drop_end", s.dropId, s.ownerId);
+  await sql.end({ timeout: 5 });
+});
+
+test("bad signature and stale timestamp are refused", async () => {
+  assert.equal((await handleWebhook(signed(msgBody(ch, judge(), "hi"), Date.now(), "wrong"), { creds })).status, 401);
+  assert.equal((await handleWebhook(signed(msgBody(ch, judge(), "hi"), Date.now() - 6 * 60_000), { creds })).status, 401);
+  const jobs: (() => Promise<unknown>)[] = [];
+  const ok = await handleWebhook(signed(msgBody(ch, judge(), "Wow 😍")), { creds, deps: fakes, defer: (j) => jobs.push(j) });
+  assert.equal(ok.status, 200);
+  assert.deepEqual(await ok.json(), { ok: true, accepted: 1 });
+  await Promise.all(jobs.map((j) => j()));
+});
+
+test("roomTexts keeps only open-channel text", () => {
+  const b = msgBody("dr_x", "b_1", "hello");
+  assert.equal(roomTexts(b)[0].text, "hello");
+  assert.deepEqual(roomTexts({ ...b, type: "message:delete" }), []);
+  assert.deepEqual(roomTexts({ ...b, data: [{ ...b.data[0], channelType: 3 }] }), []);
+  assert.deepEqual(roomTexts({ ...b, data: [{ ...b.data[0], messageType: "DB:Sold" }] }), []);
+});
+
+test("replay of a message id is ignored; dibs_bot and the assistant are ignored", async () => {
+  const m = { channelId: ch, fromUserId: judge(), messageId: id(), text: "so pretty" };
+  assert.equal(await handleRoomText(m, fakes), "passed");
+  assert.equal(await handleRoomText(m, fakes), "duplicate");
+  assert.equal(await handleRoomText({ ...m, messageId: id(), fromUserId: "dibs_bot" }, fakes), "ignored");
+  assert.equal(await handleRoomText({ ...m, messageId: id(), fromUserId: "dibs_assistant" }, fakes), "ignored");
+  assert.equal(await handleRoomText({ ...m, messageId: id(), channelId: "dr_nowhere" }, fakes), "no_drop");
+});
+
+test("scam text: blocked, logged without text, hidden in the room, sender told why", { timeout: 120_000 }, async () => {
+  const messageId = id();
+  bus().publish("room", ch, judge(), "pay here rahul@okaxis", "Hook T.");
+  assert.equal(await handleRoomText({ channelId: ch, fromUserId: judge(), messageId, text: "pay 500 advance to rahul.k@okaxis" }, fakes), "blocked");
+  const [mod] = await sql`select * from moderation_events where nexconn_msg_id = ${messageId}`;
+  assert.equal(mod.rule, "upi");
+  assert.equal(mod.action, "blocked");
+  assert.equal(mod.buyer_id, s.buyerId);
+  assert.ok(!("text" in mod));
+  const rows = await sql`select channel_type, channel_id, msg_type, payload, status from outbox where drop_id = ${s.dropId} and msg_type in ('DB:Hide','DB:Alert') and (payload->>'messageId' = ${messageId} or payload->>'kind' = 'blocked')`;
+  const hide = rows.find((r) => r.msg_type === "DB:Hide")!, alert = rows.find((r) => r.msg_type === "DB:Alert")!;
+  assert.equal(hide.channel_id, ch);
+  assert.equal(alert.channel_id, judge());
+  assert.equal(alert.payload.text, BLOCKED_TEXT);
+  // the room's earlier cards go first (per-channel order, one row per round trip from a laptop): drain until the hide is out
+  const hideStatus = () => sql`select status from outbox where drop_id = ${s.dropId} and msg_type = 'DB:Hide' and payload->>'messageId' = ${messageId}`.then((r) => r[0].status);
+  for (let end = Date.now() + 90_000; (await hideStatus()) !== "sent" && Date.now() < end;) await drainOutbox({ budgetMs: 10_000, max: 500 });
+  assert.equal(await hideStatus(), "sent");
+  // the shop's team may post payment details
+  calls = [];
+  assert.equal(await handleRoomText({ channelId: ch, fromUserId: "s_" + s.ownerId, messageId: id(), text: "pay to demo@upi" }, fakes), "passed");
+  assert.ok(!calls.includes("scam"));
+  // borderline -> review, and the message carries on
+  assert.equal(await handleRoomText({ channelId: ch, fromUserId: judge(), messageId: "rv_" + id(), text: "dm me for cheaper" }, fakes), "passed");
+  assert.equal((await sql`select action from moderation_events where drop_id = ${s.dropId} and nexconn_msg_id like 'rv_%'`)[0].action, "review");
+});
+
+test("typed claim: one private prompt per buyer per piece, and no answer bot after it", async () => {
+  calls = [];
+  assert.equal(await handleRoomText({ channelId: ch, fromUserId: judge(), messageId: id(), text: "booked! silver" }, fakes), "prompted");
+  assert.ok(!calls.includes("answer"));
+  const [p] = await sql`select payload from outbox where drop_id = ${s.dropId} and msg_type = 'DB:Prompt' and channel_id = ${judge()}`;
+  assert.equal(p.payload.text, "Want this? Tap to Dibs #1 · Silver");
+  assert.equal(p.payload.variant, "silver");
+  assert.equal(await handleRoomText({ channelId: ch, fromUserId: judge(), messageId: id(), text: "mine" }, fakes), "passed");
+  assert.equal((await sql`select count(*)::int as n from outbox where drop_id = ${s.dropId} and msg_type = 'DB:Prompt'`)[0].n, 1);
+});
+
+test("answer bot: 1 answer per 10 s per room, same question not twice in 60 s", async () => {
+  await sql`delete from throttles where key like ${"%" + ch + "%"}`;
+  said.length = 0;
+  const ask = (text: string) => handleRoomText({ channelId: ch, fromUserId: judge(), messageId: id(), text }, fakes);
+  assert.equal(await ask("shipping?"), "answered");
+  assert.match(said[0], /^“shipping\?” Ships in 3–5 days\.$/);
+  assert.equal(await ask("COD hai?"), "passed", "room throttle: 10 s");
+  await sql`delete from throttles where key = ${"ans:" + ch}`;     // 10 s later
+  assert.equal(await ask("Shipping ?"), "passed", "same question within 60 s");
+  assert.equal(await ask("COD hai?"), "answered", "a different question after 10 s");
+  assert.equal(said.length, 2);
+});
+
+test("pre-message callback: rules only, block with the PRD copy, pass on any doubt", async () => {
+  const pm = (userId: string, text: string, secret?: string) => {
+    const b = msgBody(ch, userId, text);
+    return signed({ type: "open_channel:pre_messaging", data: [{ appKey: creds.appKey, ...b.data[0] }] }, Date.now(), secret);
+  };
+  const jobs: (() => Promise<unknown>)[] = [];
+  const t0 = Date.now();
+  assert.deepEqual(await handlePreMessage(pm(judge(), "call me 9876543210"), { creds, defer: (j) => jobs.push(j) }), { pass: 0, extra: BLOCKED_TEXT });
+  assert.ok(Date.now() - t0 < 300);
+  await Promise.all(jobs.map((j) => j()));
+  assert.ok((await sql`select 1 from moderation_events where drop_id = ${s.dropId} and rule = 'phone'`).length);
+  assert.deepEqual(await handlePreMessage(pm(judge(), "M size hai?"), { creds }), { pass: 1 });
+  assert.deepEqual(await handlePreMessage(pm("s_" + s.ownerId, "pay to demo@upi"), { creds }), { pass: 1 });
+  assert.deepEqual(await handlePreMessage(pm(judge(), "rahul@okaxis", "wrong"), { creds }), { pass: 1 });
+  assert.deepEqual(await handlePreMessage(new Request("http://x", { method: "POST", body: "{" }), { creds }), { pass: 1 });
+});

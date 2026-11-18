@@ -314,6 +314,7 @@ export async function tick(dropId: string): Promise<DueResult | null> {
   if (!slot) return null;
   const r = await runDue(slot);
   await fn("sweep_drop", dropId);
+  await fn("sandbox_extend_holds", dropId); // demo: humans get 90 s to pay, bots 20
   await planJudge(slot);
   await drainOutbox({ budgetMs: 3000 });
   return r;
@@ -338,9 +339,12 @@ export async function runLoop(dropId: string, budgetMs = 120_000): Promise<boole
       const r = await runDue(slot);
       if (r.status === null || (r.status === "ended" && r.nextDueMs === null)) break;
       if (r.executed) kickDrain();
+      // what just ran may have scheduled more (a "next" plans its taps): re-read at once, the sweep can wait a moment
+      if (r.executed && Date.now() - lastFull < 3000) continue;
       if (Date.now() - lastFull >= 1000) {
         lastFull = Date.now();
         await fn("sweep_drop", dropId);
+        await fn("sandbox_extend_holds", dropId); // demo: humans get 90 s to pay, bots 20
         await planJudge(slot);
         kickDrain();
       }
@@ -349,7 +353,7 @@ export async function runLoop(dropId: string, budgetMs = 120_000): Promise<boole
         const ok = await sql`update try_slots set runner_until = clock_timestamp() + interval '15 seconds' where drop_id = ${dropId} and runner_token = ${token} returning 1`;
         if (!ok.length) break;
       }
-      if (r.executed) continue; // what just ran may have scheduled more (a "next" plans its taps): re-read before sleeping
+      if (r.executed) continue;
       const wait = Math.min(r.nextDueMs ?? 1000, 1000 - (Date.now() - lastFull));
       if (wait > 0) await sleep(wait);
     }
