@@ -9,6 +9,7 @@ export const sql = (g.__dibsSql ??= postgres(process.env.DATABASE_URL!, {
   ssl: "require",
   prepare: false,
   max: Number(process.env.DB_POOL_MAX ?? 8),
+  max_pipeline: 1, // the Supabase transaction pooler hangs on pipelined queries (seen in the 300-claim test)
   idle_timeout: 20,
   connect_timeout: 10,
   onnotice: () => {},

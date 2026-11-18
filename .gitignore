@@ -58,3 +58,6 @@ submission/video3/
 
 # provisioning
 .env.provision
+
+# screenshots
+.shots/
