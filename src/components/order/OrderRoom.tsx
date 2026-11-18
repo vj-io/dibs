@@ -198,7 +198,7 @@ export function OrderRoom({ orderId, viewer, embedded }: { orderId: string; view
             {v.item.photos[0]
               ? <img src={v.item.photos[0]} alt={v.item.title} className="aspect-[4/5] w-full rounded-wobble border-2 border-ink object-cover" />
               : <span className="grid aspect-[4/5] w-full place-items-center rounded-wobble border-2 border-ink bg-grey"><Icon name="bag" /></span>}
-            {(v.state === "paid" || v.state === "shipped") && <Stamp word={v.state === "paid" ? "PAID" : "SHIPPED"} size="sm" className="absolute -bottom-2 -right-3" />}
+            {(v.state === "paid" || v.state === "shipped") && <Stamp word={v.state === "paid" ? "PAID" : "SHIPPED"} size="sm" className="absolute bottom-2 left-1" />}
           </div>
           <div className="flex min-w-0 flex-1 flex-col gap-1.5">
             <p className="font-mono text-sm text-muted">Order #{v.orderNo} · {v.shop.name}</p>

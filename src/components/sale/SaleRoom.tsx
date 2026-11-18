@@ -24,10 +24,10 @@ type Result = (ClaimResult | { result: "error"; message: string; position: null;
 type Me = MyStatus & { startedAt: number; muted: boolean };
 
 declare global {
-  interface Window { __dibs?: { lastTapMs: number | null; lastResult: string | null; taps: { ms: number; result: string; serverMs: number | null }[] } }
+  interface Window { __dibs?: { lastTapMs: number | null; lastResult: string | null; taps: { ms: number; result: string; serverMs: number | null }[]; cards: string[] } }
 }
 
-const dibsDebug = () => (window.__dibs ??= { lastTapMs: null, lastResult: null, taps: [] });
+const dibsDebug = () => (window.__dibs ??= { lastTapMs: null, lastResult: null, taps: [], cards: [] });
 
 export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview?: boolean; initial?: DropState }) {
   const router = useRouter();
@@ -62,23 +62,35 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
   const meTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const joined = !!buyer;
+  const joinedRef = useRef(false);
+  const verRef = useRef(0);
+  // Judge-mode rooms reuse a pool of channels: the join replay can carry the previous visitor's cards and chat, whose
+  // versions belong to another drop. Anything sent before this sandbox drop started is not ours.
+  const floorRef = useRef(0);
+  const waitsRef = useRef<Set<string>>(new Set());
+  const previewRef = useRef(!!preview);
+  useEffect(() => {
+    joinedRef.current = joined; verRef.current = state?.version ?? 0;
+    floorRef.current = state?.isSandbox ? Date.parse(state.startsAt) - 2000 : 0;
+  }, [joined, state?.version, state?.isSandbox, state?.startsAt]);
 
   // ------------------------------------------------------------ data
-  const loadState = useCallback(async () => {
-    try {
-      const s = await api("GET /api/drops/:id/state", undefined, { id: dropId });
-      setState((cur) => mergeState(cur, s));
-    } catch (e) {
-      if (e instanceof ApiError && (e.status === 404 || e.status === 400)) setMissing(true);
-    }
-  }, [dropId]);
-
   const loadMe = useCallback(async () => {
+    if (!navigator.onLine) return; // the online event brings a catch-up fetch
     const startedAt = performance.now();
     try {
       const m = await api("GET /api/drops/:id/me", undefined, { id: dropId });
       const muted = !!m.mutedUntil && (m.mutedUntil === "infinity" || Date.parse(m.mutedUntil) > Date.now());
       setMe((cur) => (cur && cur.startedAt > startedAt ? cur : { ...m, startedAt, muted }));
+      // promoted while the personal alert is still on its way: a waitlist place turned into a hold
+      const was = waitsRef.current;
+      waitsRef.current = new Set(m.waits.map((w) => w.itemId));
+      const promoted = m.holds.find((h) => h.state === "held" && was.has(h.itemId));
+      if (promoted && !previewRef.current) {
+        setPromo((p) => p?.orderId === promoted.orderId ? p
+          : { orderId: promoted.orderId, text: "It's yours! The buyer ahead didn't pay.", at: performance.now() });
+        setAutoOpen((o) => o ?? promoted.orderId);
+      }
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) setBuyer(null);
     }
@@ -89,6 +101,17 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
     if (meTimer.current) clearTimeout(meTimer.current);
     meTimer.current = setTimeout(() => { void loadMe(); }, ms);
   }, [loadMe]);
+  const loadState = useCallback(async () => {
+    if (!navigator.onLine) return; // the online event brings a catch-up fetch
+    try {
+      const s = await api("GET /api/drops/:id/state", undefined, { id: dropId });
+      if (joinedRef.current && s.version > verRef.current) refreshMe(); // the room moved without a card reaching us
+      setState((cur) => mergeState(cur, s));
+    } catch (e) {
+      if (e instanceof ApiError && (e.status === 404 || e.status === 400)) setMissing(true);
+    }
+  }, [dropId, refreshMe]);
+
   const refreshState = useCallback(() => {
     if (stateTimer.current) clearTimeout(stateTimer.current);
     stateTimer.current = setTimeout(() => { void loadState(); }, 400);
@@ -113,8 +136,12 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
     let gone = false;
     const offs: (() => void)[] = [];
     const onMsg = (m: LiveMsg) => {
+      if (m.at < floorRef.current) return;
       if (m.kind === "card" && m.card) {
         const c = m.card;
+        const log = dibsDebug().cards; // last cards seen, for tests and debugging
+        log.push(`${c.t}${"v" in c ? ` v${c.v}` : ""}${"liveItemId" in c ? ` ${String(c.liveItemId).slice(0, 8)}` : "itemId" in c ? ` ${c.itemId.slice(0, 8)}` : ""}`);
+        if (log.length > 60) log.shift();
         if (c.t === "DB:Hide") { setChat((xs) => xs.filter((x) => x.id !== c.messageId)); return; }
         setState((s) => (s ? applyCard(s, c) : s));
         if (c.t === "DB:Sold" || c.t === "DB:Back" || c.t === "DB:Stock") refreshMe();
@@ -157,6 +184,12 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
     const t = setInterval(() => { if (!navigator.onLine) return; void loadState(); if (joined) void loadMe(); }, 2000);
     return () => clearInterval(t);
   }, [connected, missing, joined, loadState, loadMe]);
+  // safety net while connected: a card stuck in the server's outbox must not freeze the room (state only, every 8 s)
+  useEffect(() => {
+    if (!connected || missing || state?.status === "ended") return;
+    const t = setInterval(() => { if (navigator.onLine && document.visibilityState === "visible") void loadState(); }, 8000);
+    return () => clearInterval(t);
+  }, [connected, missing, state?.status, loadState]);
   // back from a drop: catch up once
   const wasConnected = useRef(false);
   useEffect(() => {
@@ -427,8 +460,8 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
             <h2 id="my-status" className="font-hand text-2xl font-normal tracking-normal">My status</h2>
             {me.holds.map((h) => (
               <div key={h.claimId} className="flex flex-wrap items-center gap-2 rounded-wobble border-2 border-ink bg-card px-3 py-2 shadow-ink-sm">
+                <span className="w-full font-semibold">#{h.position} {h.title} · {h.variantLabel}</span>
                 <StatePill state={h.state} size="sm" />
-                <span className="min-w-0 flex-1 font-semibold">#{h.position} {h.title} · {h.variantLabel}</span>
                 {h.state === "held" && h.expiresAt && <Countdown expiresAt={h.expiresAt} size="sm" onDone={() => refreshMe(500)} />}
                 {h.state === "payment_claimed" && h.expiresAt && <Countdown expiresAt={h.expiresAt} size="sm" paused />}
                 <div className="flex w-full gap-2">
@@ -439,8 +472,9 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
             ))}
             {me.waits.map((w) => (
               <div key={w.claimId} className="flex flex-wrap items-center gap-2 rounded-wobble border-2 border-ink bg-yellow px-3 py-2">
+                <span className="w-full font-semibold">#{w.position} {w.title} · {w.variantLabel}</span>
                 <StatePill state="waitlisted" size="sm" label={`#${w.waitPosition} in line`} />
-                <span className="min-w-0 flex-1 font-semibold">#{w.position} {w.title} · {w.variantLabel}</span>
+                <span className="flex-1" />
                 <Button size="sm" variant="ghost" onClick={() => void leave(w.claimId)}>Leave</Button>
               </div>
             ))}
@@ -450,7 +484,7 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
         <section aria-labelledby="ticker-h" className="flex flex-col gap-2">
           <h2 id="ticker-h" className="font-hand text-2xl font-normal tracking-normal">Sold to…</h2>
           {/* fixed height: new lines never push the page around */}
-          <div className="h-[9.5rem] overflow-hidden">
+          <div className="h-[11.5rem] overflow-hidden [mask-image:linear-gradient(to_bottom,black_82%,transparent)]">
             {state.recent.length
               ? <Ticker lines={state.recent.map((c) => ({ id: tickerKey(c), card: c }))} max={3} />
               : <p className="grid h-full place-items-center text-center font-hand text-lg text-muted">Every win shows up here, for everyone, the moment it happens.</p>}
@@ -518,7 +552,7 @@ function ResultPanel({ wonHere, waitPos, result, live, latencyRef, autoOpen, onS
     const fresh = result?.result === "won" || !!promoText;
     return (
       <div role="status" className={cx("relative flex flex-col gap-2 overflow-hidden rounded-wobble border-[2.5px] border-ink bg-lime px-3 py-3 shadow-ink-sm", fresh && "pop-in")}>
-        {fresh && <Burst className="absolute -right-8 -top-12 size-28" />}
+        {fresh && <Burst className="absolute -right-12 -top-14 size-28" />}
         {wonHere.state === "held" ? (
           <p className="flex flex-wrap items-center gap-2 text-xl font-extrabold leading-tight">
             <Icon name="check" size={24} stroke={3} />{promoText ? `${promoText} Pay within` : "You got it! Pay within"}

@@ -29,6 +29,7 @@ PHONE = dict(viewport={"width": W, "height": H}, is_mobile=True, has_touch=True,
              user_agent="Mozilla/5.0 (Linux; Android 13; Pixel 6a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36")
 results: dict = {"timings": {}, "shots": [], "checks": []}
 errors: list[str] = []
+expected_404: list[str] = []
 
 
 def admin(js: str) -> None:
@@ -46,7 +47,11 @@ def check(name: str, ok: bool, detail: str = "") -> None:
 
 
 def watch(page: Page, who: str) -> Page:
-    page.on("console", lambda m: m.type == "error" and errors.append(f"[{who}] console: {m.text}"))
+    def on_console(m):
+        url = (m.location or {}).get("url", "")
+        if m.type == "error" and not any(x in url for x in expected_404):  # the deliberate not-found visits
+            errors.append(f"[{who}] console: {m.text} ({url})")
+    page.on("console", on_console)
     page.on("pageerror", lambda e: errors.append(f"[{who}] pageerror: {e}"))
     return page
 
@@ -96,7 +101,13 @@ async def product(s: Seller, title: str, photo: str, variants):
 
 
 async def item_live(page: Page, title: str):
-    await expect(page.get_by_role("heading", name=title)).to_be_visible(timeout=15000)
+    try:
+        await expect(page.get_by_role("heading", name=title)).to_be_visible(timeout=15000)
+    except AssertionError:
+        print("DEBUG state:", await page.evaluate("location.pathname"), await page.evaluate(
+            "async () => { const m = location.pathname.split('/'); const r = await fetch(`/api/drops/by-code/${m[2]}/${m[4]}`); const j = await r.json(); return JSON.stringify({v: j.state.version, status: j.state.status, live: j.state.live && j.state.live.title}); }"))
+        print("DEBUG cards:", await page.evaluate("JSON.stringify(window.__dibs && window.__dibs.cards)"))
+        raise
 
 
 async def dibs_button(page: Page):
@@ -264,12 +275,14 @@ async def buyer_scenarios(p, browser):
 
         # /me and not-found pages
         await a.goto(f"{BASE}/me")
-        await expect(a.get_by_text("Held for you")).to_be_visible()
+        await expect(a.get_by_role("heading", name="Held for you")).to_be_visible()
         await shot(a, "16-me")
+        missing_order = str(uuid.uuid4())
+        expected_404.extend(["/ZZZZZZ", missing_order])
         await a.goto(f"{BASE}/s/{slug}/d/ZZZZZZ")
         await expect(a.get_by_text("This sale room doesn't exist")).to_be_visible()
         await shot(a, "17-room-not-found")
-        await a.goto(f"{BASE}/o/{uuid.uuid4()}")
+        await a.goto(f"{BASE}/o/{missing_order}")
         await expect(a.get_by_text("We can't find this order")).to_be_visible()
         await shot(a, "18-order-not-found")
         anon = watch(await (await browser.new_context(**PHONE)).new_page(), "anon")
@@ -295,13 +308,22 @@ async def judge(browser):
     await expect(pg.get_by_text("Demo room · 40 🤖 demo buyers · nothing here is real money")).to_be_visible()
     await shot(pg, "21-judge-room")
     dibs = pg.locator("button", has_text="Dibs!")
-    await expect(dibs).to_be_enabled(timeout=30000)
-    if await pg.get_by_role("group", name="Pick an option").locator("button").count() > 1:
-        await pg.get_by_role("group", name="Pick an option").locator("button").first.click()
+    chips = pg.get_by_role("group", name="Pick an option").locator("button")
+    await expect(chips.first).to_be_visible(timeout=30000)
+    await pg.wait_for_timeout(1200)  # let the bots' first taps land, like a person reading the card
+    sold_out = chips.filter(has_text="sold out")
+    if await sold_out.count():
+        await sold_out.first.click()  # a judge usually lands on a sold-out size: the waitlist path
+    elif await chips.count() > 1:
+        await chips.first.click()
+    await expect(dibs).to_be_enabled(timeout=10000)
+    results["timings"]["judge_seconds_to_piece_1"] = round(time.monotonic() - t0, 1)
     await dibs.click()
     await expect(pg.get_by_text("on the waitlist").or_(pg.get_by_text("You got it!")).first).to_be_visible(timeout=5000)
     await shot(pg, "22-judge-after-tap")
-    await expect(pg.locator("#main").get_by_text("It's yours!").first).to_be_visible(timeout=120000)
+    outright = await pg.locator("#dibs-result").get_by_text("You got it!").count() > 0
+    results["timings"]["judge_path"] = "won outright" if outright else "waitlisted, then promoted"
+    await expect(pg.locator("#dibs-result").get_by_text("You got it!" if outright else "It's yours! The buyer ahead didn't pay.").first).to_be_visible(timeout=120000)
     secs = round(time.monotonic() - t0, 1)
     results["timings"]["judge_seconds_to_its_yours"] = secs
     check("judge path reaches It's yours!", True, f"{secs} s")

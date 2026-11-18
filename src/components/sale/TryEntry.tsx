@@ -59,7 +59,7 @@ export function TryEntry({ suggested = "buyer" }: { suggested?: "buyer" | "selle
         <div className="flex items-start gap-3 rounded-wobble border-2 border-dashed border-violet-ink bg-violet p-4">
           <Icon name="robot" size={24} className="mt-0.5 shrink-0 text-violet-ink" />
           <p className="leading-snug">
-            <strong>About the bots:</strong> the 40 🤖 demo buyers tap at set delays and never pay, so you can see a waitlist promotion in seconds.
+            <strong>About the bots:</strong> the 40 🤖 demo buyers tap at set delays and don&apos;t pay for what they win in your room, so you see a waitlist promotion within about a minute.
             They go through the same claim function as real buyers, nothing is rigged, and nothing here is real money.
           </p>
         </div>

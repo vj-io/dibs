@@ -17,7 +17,10 @@ export function MyStuff() {
   const [deleted, setDeleted] = useState<{ released: number; left: number; kept: number } | null>(null);
 
   const load = useCallback(() => {
-    api("GET /api/me").then(setAcc, (e) => setAcc(e instanceof ApiError && e.status === 401 ? "none" : "error"));
+    // ask who we are first: a visitor who never joined gets the empty state without a 401 in the console
+    api("GET /api/buyer/me")
+      .then((r) => (r.buyer ? api("GET /api/me").then(setAcc) : setAcc("none")))
+      .catch((e) => setAcc(e instanceof ApiError && e.status === 401 ? "none" : "error"));
   }, []);
   useEffect(() => { load(); }, [load]);
 
