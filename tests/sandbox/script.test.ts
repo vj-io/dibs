@@ -3,7 +3,7 @@
 import "./env.ts";
 import { test, after, before } from "node:test";
 import assert from "node:assert/strict";
-import { cancelPending, runLoop } from "../../src/lib/server/bots.ts";
+import { cancelPending, roomTick, runLoop } from "../../src/lib/server/bots.ts";
 import { fn, sql } from "../../src/lib/server/db.ts";
 import { startTry } from "../../src/lib/server/sandbox.ts";
 import { onDropEvent } from "../../src/lib/server/sandbox-hooks.ts";
@@ -30,7 +30,7 @@ async function finish(dropId: string, ownerId: string) {
 before(async () => { await Promise.all(Array.from({ length: 12 }, () => sql`select 1`)); }); // open the pool first: a cold TLS connect from a laptop takes ~4 s
 after(async () => { await sql.end({ timeout: 5 }); });
 
-type Run = { startMs: number; liveLagMs: number; promotedAfterStart: number; promotedAfterTap: number; tapAt: number; confirmMs: number; win2AfterStart: number; winMs: number; waitPos: number };
+type Run = { roomToLiveMs: number; startMs: number; liveLagMs: number; promotedAfterStart: number; promotedAfterTap: number; tapAt: number; confirmMs: number; win2AfterStart: number; winMs: number; waitPos: number };
 
 async function judgeRun(i: number): Promise<Run> {
   const t0 = Date.now();
@@ -70,11 +70,16 @@ async function judgeRun(i: number): Promise<Run> {
     const [status] = await sql`select payload from outbox where drop_id = ${s.dropId} and msg_type = 'DB:Status' and payload->>'state' = 'paid'`;
     assert.equal(status.payload.note, "Confirmed by Asha (demo staff)");
 
+    await sleep(5000);                                                        // the judge reads the order room
+    assert.equal(await item(s.dropId, 2), undefined, "no piece 2 while the judge is away from the sale room");
+    await roomTick(s.dropId);                                                 // back in the room
+    const backAt = Date.now();
     const p2 = await waitFor("piece 2 live", () => item(s.dropId, 2), 10_000, 100);
-    await sleep(600);                                                         // a quick judge
-    const w = await fn<J>("claim_dibs", p2.id, "green", s.buyerId, new Date());
+    const roomToLiveMs = Date.now() - backAt;
+    await sleep(2000);                                                        // looks at it, then taps either variant
+    const w = await fn<J>("claim_dibs", p2.id, i % 2 ? "red" : "green", s.buyerId, new Date());
     assert.equal(w.result, "won", `quick tap wins piece 2 (${JSON.stringify(w)})`);
-    return { startMs: tJoin - t0, liveLagMs: lag, promotedAfterStart: promotedAt - t0, promotedAfterTap: promotedAt - tapAt, tapAt: tapAt - t0, confirmMs, win2AfterStart: Date.now() - t0, winMs: w.ms, waitPos: c.position };
+    return { roomToLiveMs, startMs: tJoin - t0, liveLagMs: lag, promotedAfterStart: promotedAt - t0, promotedAfterTap: promotedAt - tapAt, tapAt: tapAt - t0, confirmMs, win2AfterStart: Date.now() - t0, winMs: w.ms, waitPos: c.position };
   } finally {
     await finish(s.dropId, s.ownerId);
     await loop;
@@ -91,6 +96,7 @@ test("buyer script: 5 simulated judges reach It's yours, pay, and win piece 2", 
     assert.ok(r.waitPos >= 1 && r.waitPos <= 3, `waitlist position ${r.waitPos}`);
     assert.ok(r.promotedAfterTap <= 45_000, `promoted ${r.promotedAfterTap} ms after the tap`);
     assert.ok(r.confirmMs <= 8000, `confirm in ${r.confirmMs} ms`);
+    assert.ok(r.roomToLiveMs >= 2500 && r.roomToLiveMs <= 6000, `piece 2 ${r.roomToLiveMs} ms after the room tick`);
     assert.ok(r.win2AfterStart <= 90_000, `It's yours twice inside 90 s (${r.win2AfterStart})`);
   }
 });
@@ -212,5 +218,31 @@ test("a human's sandbox hold is 90 s from the start; walking away still hands it
     assert.equal(await fn("sandbox_extend_holds", s.dropId), 0, "the promoted bot keeps 20 s");
   } finally {
     await finish(s.dropId, s.ownerId);
+  }
+});
+
+test("piece 2 fallback: 30 s after the confirm when the judge never comes back to the room", { timeout: 90_000 }, async () => {
+  const s = await startTry("buyer", "Away Judge");
+  await cancelPending(s.dropId);
+  await sql`select sandbox_next(${s.dropId}, ${s.ownerId}, 0, null, null)`;
+  const loop = runLoop(s.dropId, 60_000);
+  try {
+    const p1 = await item(s.dropId, 1);
+    const w = await fn<J>("claim_dibs", p1.id, "rose", s.buyerId, new Date());
+    assert.equal(w.result, "won");
+    await fn("order_paid_claim", w.orderId, s.buyerId, "123456789012");
+    await onDropEvent({ type: "order_paid_claim", dropId: s.dropId, orderId: w.orderId });
+    await waitFor("confirm", async () => (await sql`select 1 from orders where id = ${w.orderId} and state = 'paid'`)[0], 8000);
+    const confirmedAt = Date.now();
+    await sleep(20_000);
+    assert.equal(await item(s.dropId, 2), undefined, "still waiting for the judge");
+    await waitFor("fallback piece 2", () => item(s.dropId, 2), 20_000, 250);
+    const ms = Date.now() - confirmedAt;
+    assert.ok(ms >= 27_000 && ms <= 36_000, `fallback after ${ms} ms`);
+    await roomTick(s.dropId);
+    assert.equal((await sql`select count(*)::int as n from bot_schedule where drop_id = ${s.dropId} and payload ? 'afterRoom'`)[0].n, 0, "a late room tick adds nothing");
+  } finally {
+    await finish(s.dropId, s.ownerId);
+    await loop;
   }
 });

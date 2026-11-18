@@ -28,20 +28,21 @@ export const useOnline = () => useSyncExternalStore(subscribeOnline, () => navig
 const isPhoneNow = () => matchMedia("(pointer: coarse)").matches || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
 export const useIsPhone = () => useSyncExternalStore(() => () => {}, isPhoneNow, () => false);
 
-/** Judge mode safety net: POST /api/try/tick every second while a sandbox room or order page is open. */
-export function useTryTick(dropId: string | null | undefined) {
+/** Judge mode safety net: POST /api/try/tick every second while a sandbox room or order page is open.
+ *  `where` tells the bot script where the judge is (piece 2 waits until they are back in the room). */
+export function useTryTick(dropId: string | null | undefined, where: "room" | "order") {
   useEffect(() => {
     if (!dropId) return;
     let stopped = false, busy = false;
     const t = setInterval(() => {
       if (busy || stopped || !navigator.onLine) return;
       busy = true;
-      api("POST /api/try/tick", { dropId })
+      api("POST /api/try/tick", { dropId, where })
         .catch((e: { status?: number }) => { if (e.status === 404) { stopped = true; clearInterval(t); } })
         .finally(() => { busy = false; });
     }, 1000);
     return () => { stopped = true; clearInterval(t); };
-  }, [dropId]);
+  }, [dropId, where]);
 }
 
 /** The PRD's display time for receipts and chat: "20:04". */

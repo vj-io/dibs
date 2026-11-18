@@ -2,6 +2,7 @@
 /* eslint-disable @next/next/no-img-element -- product photos are SVG drawings or pre-compressed Storage images */
 // The order room: one won piece, how to pay for it, its status, and a chat with the seller's team (Nexconn group).
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/client/api";
 import { getLive, type Live, type LiveMsg, type LiveStatus } from "@/lib/client/live";
@@ -23,7 +24,11 @@ const ENDED: Record<string, { word: string; why: (v: OrderView, note: string | n
   hold_cancelled: { word: "Cancelled", why: (_, n) => `The shop cancelled this hold${n ? `: ${n}` : "."}` },
 };
 
-export function OrderRoom({ orderId, viewer: asked, embedded }: { orderId: string; viewer: "buyer" | "staff"; embedded?: boolean }) {
+export function OrderRoom({ orderId, viewer: asked, embedded, arrived }: {
+  orderId: string; viewer: "buyer" | "staff"; embedded?: boolean;
+  /** Came straight from the sale room after a win or a promotion (`?from=`): repeat the headline on arrival. */
+  arrived?: "won" | "promoted";
+}) {
   const toast = useToast();
   const phone = useIsPhone();
   const [view, setView] = useState<OrderView | null>(null);
@@ -126,7 +131,7 @@ export function OrderRoom({ orderId, viewer: asked, embedded }: { orderId: strin
     return () => clearInterval(t);
   }, [connected, view, load]);
 
-  useTryTick(view?.drop.isSandbox ? view.drop.id : null);
+  useTryTick(view?.drop.isSandbox ? view.drop.id : null, "order");
 
   // ------------------------------------------------------------ actions
   async function run(key: string, f: () => Promise<unknown>, done?: string) {
@@ -195,6 +200,15 @@ export function OrderRoom({ orderId, viewer: asked, embedded }: { orderId: strin
       {status === "offline" && <ConnectionBar status="offline" />}
       <main id={embedded ? undefined : "main"} className={cx("mx-auto flex w-full max-w-xl flex-1 flex-col gap-4 pb-10", embedded ? "px-1" : "px-4 pt-4")}>
         {sandbox && viewer === "buyer" && <OrderCoach v={v} roomHref={roomHref} />}
+        {viewer === "buyer" && arrived && v.state === "held" && (
+          <p role="status" className="pop-in flex items-center gap-2 rounded-wobble border-[2.5px] border-ink bg-lime px-3 py-2.5 text-xl font-extrabold leading-tight shadow-ink-sm">
+            <Icon name={arrived === "promoted" ? "sparkle" : "check"} size={24} stroke={2.8} />
+            {arrived === "promoted" ? "It's yours! The buyer ahead didn't pay." : "You got it!"}
+          </p>
+        )}
+        {sandbox && viewer === "buyer" && (v.state === "paid" || v.state === "shipped") && (
+          <BackToRoom href={roomHref} label={v.item.position === 1 ? "Back to the room for piece 2" : "Back to the room"} />
+        )}
 
         {/* order card */}
         <Box as="article" className="flex gap-3 p-3" aria-label={`Order #${v.orderNo}`}>
@@ -356,10 +370,34 @@ function Chrome({ embedded, viewer, orderNo, children }: { embedded?: boolean; v
   );
 }
 
+/** Judge mode after "Paid": a big way back to the room, taken by itself after 4 s unless the judge stays. */
+function BackToRoom({ href, label }: { href: string; label: string }) {
+  const router = useRouter();
+  const [left, setLeft] = useState(4);
+  const [stay, setStay] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => { box.current?.scrollIntoView({ block: "center", behavior: "smooth" }); }, []); // the judge just tapped I've paid further down
+  useEffect(() => {
+    if (stay) return;
+    const t = setInterval(() => setLeft((n) => n - 1), 1000);
+    return () => clearInterval(t);
+  }, [stay]);
+  useEffect(() => { if (!stay && left <= 0) router.push(href); }, [left, stay, href, router]);
+  return (
+    <div ref={box} className="flex flex-col gap-1">
+      <LinkButton href={href} size="lg" icon="arrowRight">{label}</LinkButton>
+      <p className="flex items-center justify-between gap-2 px-1 font-hand text-lg" aria-live="polite">
+        {stay ? <span>Take your time.</span> : <span>Going back in <span className="font-mono">{Math.max(0, left)}</span> s…</span>}
+        {!stay && <button type="button" onClick={() => setStay(true)} className="min-h-12 px-2 font-sans text-base font-semibold underline">Stay here</button>}
+      </p>
+    </div>
+  );
+}
+
 function OrderCoach({ v, roomHref }: { v: OrderView; roomHref: string }) {
   const line = v.state === "held" ? "Demo: tap I've paid. No real money moves."
     : v.state === "payment_claimed" ? "Demo staff confirms in 3 s…"
-    : v.state === "paid" || v.state === "shipped" ? <>Paid! <Link href={roomHref} className="font-semibold underline">Back to the room for piece 2</Link></>
+    : v.state === "paid" || v.state === "shipped" ? "Paid and confirmed by demo staff. Next: back to the room."
     : <>This hold ended. <Link href={roomHref} className="font-semibold underline">Back to the room</Link></>;
   return (
     <p role="status" aria-live="polite" className="flex items-center gap-2 rounded-wobble border-2 border-dashed border-violet-ink bg-violet px-3 py-2 font-hand text-lg leading-tight">

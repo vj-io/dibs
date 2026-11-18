@@ -1,5 +1,6 @@
 // Read helpers and permission walls shared by the API routes. Server only.
 // Every staff check re-reads the staff row (active, same shop): a removed staff member's cookie stops working at once.
+import { after } from "next/server";
 import { z } from "zod";
 import type { DropState, OrderState, Product, SellerMe, ShopSettings, StaffMember } from "../types.ts";
 import { fn, sql } from "./db.ts";
@@ -154,7 +155,10 @@ const refreshViewers = (channelId: string) => {
 export function cachedViewers(channelId: string): number | null {
   if (flags.mode !== "nexconn") return null;
   const hit = viewerCache.get(channelId);
-  if (!hit || Date.now() - hit.at >= 5000) void refreshViewers(channelId);
+  if (!hit || Date.now() - hit.at >= 5000) {
+    // after(): a bare floating promise is frozen with the function once the response is sent (seen live as 12-50 s "network" failures)
+    try { after(() => refreshViewers(channelId)); } catch { void refreshViewers(channelId); }
+  }
   return hit?.n ?? null;
 }
 

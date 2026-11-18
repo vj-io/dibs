@@ -3,14 +3,18 @@ import { z } from "zod";
 
 export type LiveKnowledge = { title: string; pricePaise: number; note: string | null; variants: { label: string; left: number }[] };
 
-const QUESTION_WORDS = new RegExp(
-  `\\b(?:price|rate|kitna|kitne|kitni|milega|milegi|milta|hai kya|h kya|kya|kab|cod|cash on delivery|size|shipping|ship|delivery|courier|return|exchange|refund|original|silver|gold|colou?r|available|stock|discount|offer|material|quality|warranty|how much|when|which)\\b`,
+// A question needs a "?" or an asking pattern. Topic words alone ("Love the colour", "silver", "M") are not questions.
+const ASKING = new RegExp(
+  `\\b(?:kya|kitna|kitne|kitni|kab|kaise|kaisa|kaisi|kaun|kahan|kidhar|kyun|kyu|milega|milegi|milenge|milta|milti|` +
+  `how|what(?! a\\b)|when|where|which|why|is it|is this|is that|is there|are these|are they|do you|does it|does this|can i|can you|will it|will you)\\b` +
+  `|^\\s*[\\p{L}\\p{N}]+\\s+(?:ya|or)\\s+[\\p{L}\\p{N}]+\\s*$`, // "silver ya gold"
+  "u",
 );
 
-/** Does a sale-room message look like a question the bot may answer? */
+/** Does a sale-room message ask something the bot may answer? */
 export function isQuestion(text: string): boolean {
-  const t = text.toLowerCase().replace(/['’`]/g, "");
-  return /\?[\s\p{Extended_Pictographic}‍️]*$/u.test(t.trim()) || QUESTION_WORDS.test(t);
+  const t = text.toLowerCase().replace(/['’`]/g, "").trim();
+  return /\?/.test(t) || ASKING.test(t);
 }
 
 const rupees = (paise: number) => `₹${(paise / 100).toLocaleString("en-IN", { maximumFractionDigits: 2, minimumFractionDigits: paise % 100 ? 2 : 0 })}`;

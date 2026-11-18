@@ -13,7 +13,7 @@ import { tapTime, type Card } from "@/lib/codec";
 import type { ClaimResult, DropState, MyStatus } from "@/lib/types";
 import {
   AppHeader, Avatar, Banner, BottomSheet, Burst, Button, Card as Box, Chip, ConnectionBar, Countdown, EmptyState, Icon,
-  LinkButton, PhotoCarousel, Price, Skeleton, Stamp, StatePill, Ticker, cx, mmss, useToast,
+  LinkButton, PhotoCarousel, Price, Skeleton, Stamp, StatePill, Ticker, cx, mmss, useToast, type IconName,
 } from "@/components/ui";
 import { Chat, type ChatLine } from "@/components/chat/Chat";
 import { JoinSheet } from "./JoinSheet";
@@ -50,7 +50,8 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
   const [joinOpen, setJoinOpen] = useState(false);
   const [chatNote, setChatNote] = useState<string | null>(null);
   const [release, setRelease] = useState<MyStatus["holds"][number] | null>(null);
-  const [autoOpen, setAutoOpen] = useState<string | null>(null);
+  // the order room opens by itself after the celebration has been seen (promotion 1.6 s, win 3 s)
+  const [autoOpen, setAutoOpen] = useState<{ orderId: string; ms: number; from: "won" | "promoted" } | null>(null);
   const [announce, setAnnounce] = useState("");
   const [liveTry, setLiveTry] = useState(0);
   const [meId, setMeId] = useState<string | null>(null);
@@ -90,7 +91,7 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
       if (promoted && !previewRef.current) {
         setPromo((p) => p?.orderId === promoted.orderId ? p
           : { orderId: promoted.orderId, text: "It's yours! The buyer ahead didn't pay.", at: performance.now() });
-        setAutoOpen((o) => o ?? promoted.orderId);
+        setAutoOpen((o) => o ?? { orderId: promoted.orderId, ms: 1600, from: "promoted" });
       }
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) setBuyer(null);
@@ -159,7 +160,7 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
       if (c.t === "DB:Prompt") { setPrompt(c); return; }
       if (c.t !== "DB:Alert") return;
       refreshMe(0);
-      if (c.kind === "promoted") { setPromo({ orderId: c.orderId, text: c.text, at: performance.now() }); setAnnounce(c.text); if (c.orderId) setAutoOpen(c.orderId); }
+      if (c.kind === "promoted") { setPromo({ orderId: c.orderId, text: c.text, at: performance.now() }); setAnnounce(c.text); if (c.orderId) setAutoOpen({ orderId: c.orderId, ms: 1600, from: "promoted" }); }
       else if (c.kind === "blocked") { setChatNote(c.text); toast(c.text, { tone: "warn", ms: 7000 }); }
       else toast(c.text, { tone: c.kind === "paid" || c.kind === "shipped" ? "good" : c.kind === "expiring" ? "urgent" : "warn", ms: 6000 });
     };
@@ -200,12 +201,12 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
     wasConnected.current = connected;
   }, [connected, joined, loadState, loadMe]);
 
-  useTryTick(state?.isSandbox && !preview ? dropId : null);
+  useTryTick(state?.isSandbox && !preview ? dropId : null, "room");
 
   // the winner's order chat opens by itself after a moment (they can stay)
   useEffect(() => {
     if (!autoOpen || preview) return;
-    const t = setTimeout(() => router.push(`/o/${autoOpen}`), 3500);
+    const t = setTimeout(() => router.push(`/o/${autoOpen.orderId}?from=${autoOpen.from}`), autoOpen.ms);
     return () => clearTimeout(t);
   }, [autoOpen, preview, router]);
 
@@ -223,8 +224,9 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
   // ------------------------------------------------------------ derived
   const live = state?.live ?? null;
   const variants = live?.variants ?? [];
-  const chosen = variants.length === 1 ? variants[0].key
-    : pick && pick.itemId === live?.itemId && variants.some((v) => v.key === pick.key) ? pick.key : null;
+  const inStock = variants.filter((v) => v.left > 0);
+  const chosen = pick && pick.itemId === live?.itemId && variants.some((v) => v.key === pick.key) ? pick.key
+    : variants.length === 1 ? variants[0].key : inStock.length === 1 ? inStock[0].key : null; // one choice left: preselected
   const chosenV = variants.find((v) => v.key === chosen);
   const settled = (r: Result) => !!me && me.startedAt > r.at; // my status fetched after this result: it is the truth
   const hold = live ? me?.holds.find((h) => h.itemId === live.itemId) : undefined;
@@ -268,7 +270,7 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
       const r = await api("POST /api/claims", { itemId: live.itemId, variantKey: chosen });
       setResult({ ...r, itemId: live.itemId, variantKey: chosen, tapAt, at: performance.now() });
       setAnnounce(r.message);
-      if (r.result === "won" && r.orderId) setAutoOpen(r.orderId);
+      if (r.result === "won" && r.orderId) setAutoOpen({ orderId: r.orderId, ms: 3000, from: "won" });
       refreshMe(0);
     } catch (e) {
       const message = e instanceof ApiError ? e.message : "Something went wrong. Try again.";
@@ -301,7 +303,7 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
       await api("POST /api/claims/:id/release", undefined, { id: release.claimId });
       toast(`Released #${release.position}. The next buyer in line gets it.`, { tone: "info" });
       if (promo?.orderId === release.orderId) setPromo(null);
-      if (autoOpen === release.orderId) setAutoOpen(null);
+      if (autoOpen?.orderId === release.orderId) setAutoOpen(null);
     } catch (e) {
       toast(e instanceof ApiError ? e.message : "Couldn't release. Try again.", { tone: "warn" });
     }
@@ -322,6 +324,24 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
     focusDibs();
   }
 
+  /** One or two lines under Dibs!: the result, my place in line, or why Dibs is off. */
+  function statusLine(): { tone: "lime" | "yellow" | "peach" | "plain"; icon: IconName; text: React.ReactNode } {
+    if (promoLive && promo) {
+      const head = promo.text.replace(/\s*Pay within.*$/, "");
+      return { tone: "lime", icon: "sparkle", text: <>{head}{promoHold?.expiresAt && <> Pay within <Countdown expiresAt={promoHold.expiresAt} size="sm" /></>}</> };
+    }
+    if (wonHere) {
+      if (wonHere.state === "held") return { tone: "lime", icon: "check", text: <>You got it! Pay within {wonHere.expiresAt ? <Countdown expiresAt={wonHere.expiresAt} size="sm" /> : mmss(0)}</> };
+      return { tone: "lime", icon: "check", text: wonHere.state === "payment_claimed" ? "Payment sent · waiting for the shop to confirm" : "Paid · it's yours" };
+    }
+    if (waitPos) return { tone: "yellow", icon: "queue", text: `You're #${waitPos} on the waitlist. We'll tell you the moment it's yours.` };
+    if (freshResult && freshResult.result !== "won" && freshResult.result !== "waitlisted") return { tone: "peach", icon: "warning", text: freshResult.message };
+    if (block) return { tone: "plain", icon: block === "Reconnecting…" ? "warning" : "clock", text: block };
+    if (!joined) return { tone: "plain", icon: "tap", text: "Tap Dibs! to join and claim. First tap wins." };
+    if (chosenV && chosenV.left === 0) return { tone: "plain", icon: "queue", text: `Sold out · tap to join the waitlist${chosenV.waiting ? ` (${chosenV.waiting} waiting)` : ""}` };
+    return { tone: "plain", icon: "tap", text: "First tap wins. The server decides, everyone sees it." };
+  }
+
   // ------------------------------------------------------------ render
   if (missing) return <RoomMissing preview={preview} />;
   if (!state) return <RoomSkeleton preview={preview} />;
@@ -336,17 +356,16 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
     <div className={cx("flex flex-col", !preview && "min-h-dvh")}>
       {!preview && (
         <AppHeader
-          title={<span className="flex min-w-0 items-center gap-2">
+          title={<span className="flex min-w-0 flex-1 items-center gap-2">
             {state.shop.logoUrl
               ? <img src={state.shop.logoUrl} alt="" className="size-9 shrink-0 rounded-blob border-2 border-ink object-cover" />
               : <Avatar name={state.shop.name} size={34} />}
             <span className="truncate">{state.shop.name}</span>
           </span>}
           live={state.status === "live"}
-          right={<span className="flex items-center gap-1">
-            {state.viewers != null && <span className="inline-flex items-center gap-1 px-1 font-mono text-sm" data-testid="room-viewers"><Icon name="users" size={16} />{state.viewers} watching</span>}
-            <Link href="/me" className="inline-flex min-h-12 items-center gap-1 rounded-md px-2 font-semibold underline decoration-2"><Icon name="bag" size={18} />My stuff</Link>
-          </span>}
+          right={<Link href="/me" aria-label="My stuff" className="inline-flex min-h-12 min-w-12 items-center justify-center gap-1 rounded-md px-1 font-semibold underline decoration-2 sm:px-2">
+            <Icon name="bag" size={20} /><span className="hidden sm:inline">My stuff</span>
+          </Link>}
         />
       )}
       {preview && (
@@ -358,6 +377,11 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
       )}
       {sandbox && <Banner />}
       {offline && <ConnectionBar status="offline" />}
+      {!preview && state.viewers != null && (
+        <p className="mx-auto flex w-full max-w-xl items-center gap-1.5 px-4 pt-2 text-sm text-muted" data-testid="room-viewers">
+          <Icon name="users" size={16} /><span className="font-mono">{state.viewers}</span> watching
+        </p>
+      )}
       <p className="sr-only" aria-live="polite" role="status">{announce}</p>
 
       <main id={preview ? undefined : "main"} className={cx("mx-auto flex w-full max-w-xl flex-1 flex-col gap-4 pb-10", preview ? "px-3" : "px-4 pt-4")}>
@@ -379,10 +403,10 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
             {promo.orderId && (
               <div className="flex flex-wrap gap-2">
                 <LinkButton href={`/o/${promo.orderId}`} icon="rupee">Pay now</LinkButton>
-                {autoOpen === promo.orderId && <Button variant="ghost" onClick={() => setAutoOpen(null)}>Stay here</Button>}
+                {autoOpen?.orderId === promo.orderId && <Button variant="ghost" onClick={() => setAutoOpen(null)}>Stay here</Button>}
               </div>
             )}
-            {autoOpen === promo.orderId && <p className="font-hand text-lg">Opening your order chat…</p>}
+            {autoOpen?.orderId === promo.orderId && <p className="font-hand text-lg">Opening your order chat…</p>}
           </Box>
         )}
 
@@ -426,38 +450,55 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
 
         {live && state.status !== "ended" && (
           <Box as="article" className="flex flex-col gap-3 p-3" aria-label={`Piece ${live.position}: ${live.title}`}>
-            <PhotoCarousel key={live.itemId} photos={photos} alt={live.title} onFirstLoad={() => setReadyFor(live.itemId)}>
-              {sold && <Stamp word="SOLD" size="lg" className="absolute left-4 top-4" />}
-              {live.state === "closed" && <span className="absolute left-3 top-3"><StatePill state="closed" /></span>}
-              {wonHere && <Stamp word="YOURS" size="lg" tilt={8} className="absolute right-4 top-4" />}
-            </PhotoCarousel>
+            {/* photo height capped so title and price sit above the action bar at 360x640 (smaller under the demo banner and coach) */}
+            <div className={cx("mx-auto w-full", sandbox && !preview ? "max-w-[min(100%,20vh)]" : "max-w-[min(100%,30vh)]")}>
+              <PhotoCarousel key={live.itemId} photos={photos} alt={live.title} onFirstLoad={() => setReadyFor(live.itemId)}>
+                {sold && <Stamp word="SOLD" size="lg" className="absolute left-3 top-3" />}
+                {live.state === "closed" && <span className="absolute left-3 top-3"><StatePill state="closed" /></span>}
+                {wonHere && <Stamp word="YOURS" size="md" tilt={8} className="absolute right-3 top-3" />}
+              </PhotoCarousel>
+            </div>
             <div className="flex items-start justify-between gap-3">
-              <h1 className="min-w-0 text-2xl leading-tight"><span className="font-mono text-muted">#{live.position}</span> {live.title}</h1>
-              <Price paise={live.pricePaise} size="lg" className="shrink-0" />
+              <h1 className="min-w-0 text-xl leading-tight sm:text-2xl"><span className="font-mono text-muted">#{live.position}</span> {live.title}</h1>
+              <Price paise={live.pricePaise} size="md" className="shrink-0 text-2xl sm:text-3xl" />
             </div>
             {live.note && <p className="font-hand text-lg leading-snug">{live.note}</p>}
-            {variants.length > 0 && (
-              <div role="group" aria-label="Pick an option" className="flex flex-wrap gap-2">
+            <div id="dibs-result">
+              <ResultPanel wonHere={wonHere} result={freshResult} latencyRef={latencyRef}
+                promoText={promoHere ? promo!.text.replace(/\s*Pay within.*$/, "") : null}
+                autoOpen={autoOpen?.orderId ?? null} onStay={() => setAutoOpen(null)} />
+            </div>
+          </Box>
+        )}
+
+        {live && state.status !== "ended" && (
+          // The claim controls are always on screen: fixed to the bottom (a spacer at the end of the page keeps the chat
+          // clear of it); inside the seller's phone preview, sticky within the frame. Fixed heights (chips row, 56 px
+          // button, two-line status) so nothing jumps when the state changes.
+          <div className={cx("z-20 border-t-[2.5px] border-ink bg-paper/95 pt-2 backdrop-blur-sm pb-[max(0.6rem,env(safe-area-inset-bottom))]",
+            preview ? "sticky bottom-0 -mx-3 px-3" : "fixed inset-x-0 bottom-0 px-4")} data-testid="action-bar">
+          <div className="mx-auto flex w-full max-w-xl flex-col gap-2">
+            {variants.length > 1 && (
+              <div role="group" aria-label="Pick an option" className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none]">
                 {variants.map((v) => (
-                  <Chip key={v.key} label={v.label} left={v.left} waiting={v.waiting}
+                  <Chip key={v.key} label={v.label} left={v.left} waiting={v.waiting} className="shrink-0 whitespace-nowrap"
                     selected={chosen === v.key} disabled={preview}
                     onSelect={() => setPick({ itemId: live.itemId, key: v.key })} />
                 ))}
               </div>
             )}
-            {chosenV && chosenV.left === 0 && !wonHere && !waitPos && (
-              <p className="flex items-center gap-1.5 font-semibold"><Icon name="queue" size={18} />Sold out · tap to join the waitlist{chosenV.waiting ? ` (${chosenV.waiting} waiting)` : ""}</p>
+            {variants.length === 1 && (
+              <div role="group" aria-label="Pick an option" className="flex">
+                <Chip label={variants[0].label} left={variants[0].left} waiting={variants[0].waiting} selected disabled={preview} className="shrink-0" />
+              </div>
             )}
             <div ref={dibsRef}>
-              <Button variant="dibs" icon="tap" busy={busy} disabledReason={block ?? undefined}
-                onClick={() => void dibs()} aria-describedby="dibs-result">Dibs!</Button>
+              <Button variant="dibs" icon="tap" busy={busy} disabled={!!block} className="h-14"
+                onClick={() => void dibs()} aria-describedby="dibs-status">Dibs!</Button>
             </div>
-            <div id="dibs-result">
-              <ResultPanel wonHere={wonHere} waitPos={waitPos} result={freshResult} live={live} latencyRef={latencyRef}
-                promoText={promoHere ? promo!.text.replace(/\s*Pay within.*$/, "") : null}
-                autoOpen={autoOpen} onStay={() => setAutoOpen(null)} />
-            </div>
-          </Box>
+            <StatusLine id="dibs-status" {...statusLine()} />
+          </div>
+          </div>
         )}
 
         {joined && me && (me.holds.length > 0 || me.waits.length > 0) && (
@@ -489,11 +530,11 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
         <section aria-labelledby="ticker-h" className="flex flex-col gap-2">
           <h2 id="ticker-h" className="font-hand text-2xl font-normal tracking-normal">Sold to…</h2>
           {/* fixed height: new lines never push the page around */}
-          <div className="h-[11.5rem] overflow-hidden [mask-image:linear-gradient(to_bottom,black_82%,transparent)]">
-            {state.recent.length
-              ? <Ticker lines={state.recent.map((c) => ({ id: tickerKey(c), card: c }))} max={3} />
-              : <p className="grid h-full place-items-center text-center font-hand text-lg text-muted">Every win shows up here, for everyone, the moment it happens.</p>}
-          </div>
+          {state.recent.length ? (
+            <div className="h-[11.5rem] overflow-hidden [mask-image:linear-gradient(to_bottom,black_82%,transparent)]">
+              <Ticker lines={state.recent.map((c) => ({ id: tickerKey(c), card: c }))} max={3} />
+            </div>
+          ) : <p className="font-hand text-lg text-muted">Nothing sold yet.</p>}
         </section>
 
         <Chat title="Room chat" lines={chat} meId={meId}
@@ -520,6 +561,8 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
             </ol>
           </section>
         )}
+        {/* room for the fixed action bar, so the end of the page can scroll clear of it */}
+        {live && state.status !== "ended" && !preview && <div aria-hidden="true" className="h-[13rem] shrink-0" />}
       </main>
 
       {!preview && state && (
@@ -547,60 +590,45 @@ function ItemWord({ state }: { state: DropState["items"][number]["state"] }) {
   return <span className="inline-flex items-center gap-0.5 text-xs font-semibold"><Icon name={icon} size={12} />{word}</span>;
 }
 
-function ResultPanel({ wonHere, waitPos, result, live, latencyRef, autoOpen, onStay, promoText }: {
+function StatusLine({ id, tone, icon, text }: { id: string; tone: "lime" | "yellow" | "peach" | "plain"; icon: IconName; text: React.ReactNode }) {
+  const bg = { lime: "bg-lime border-ink", yellow: "bg-yellow border-ink", peach: "bg-peach border-ink", plain: "border-transparent" }[tone];
+  return (
+    <p id={id} role="status" aria-live="polite"
+      className={cx("flex min-h-[3.4rem] items-center gap-2 rounded-wobble border-2 px-2.5 py-1 text-[0.95rem] font-semibold leading-snug", bg)}>
+      <Icon name={icon} size={20} className="shrink-0" />
+      <span className="line-clamp-2 min-w-0">{text}</span>
+    </p>
+  );
+}
+
+/** The win (or promotion) moment inside the piece card: celebration, tap time and the way to the order chat. */
+function ResultPanel({ wonHere, result, latencyRef, autoOpen, onStay, promoText }: {
   promoText: string | null;
   wonHere: { orderId: string; expiresAt: string | null; state: MyStatus["holds"][number]["state"] } | null | undefined;
-  waitPos: number | null; result: Result | null; live: NonNullable<DropState["live"]>;
+  result: Result | null;
   latencyRef: React.RefObject<HTMLSpanElement | null>; autoOpen: string | null; onStay: () => void;
 }) {
-  if (wonHere) {
-    const fresh = result?.result === "won" || !!promoText;
-    return (
-      <div role="status" className={cx("relative flex flex-col gap-2 overflow-hidden rounded-wobble border-[2.5px] border-ink bg-lime px-3 py-3 shadow-ink-sm", fresh && "pop-in")}>
-        {fresh && <Burst className="absolute -right-12 -top-14 size-28" />}
-        {wonHere.state === "held" ? (
-          <p className="flex flex-wrap items-center gap-2 text-xl font-extrabold leading-tight">
-            <Icon name="check" size={24} stroke={3} />{promoText ? `${promoText} Pay within` : "You got it! Pay within"}
-            {wonHere.expiresAt ? <Countdown expiresAt={wonHere.expiresAt} /> : <span className="font-mono">{mmss(0)}</span>}
-          </p>
-        ) : wonHere.state === "payment_claimed" ? (
-          <p className="flex items-center gap-2 text-lg font-extrabold"><Icon name="rupee" size={22} />Payment sent · waiting for the shop to confirm</p>
-        ) : (
-          <p className="flex items-center gap-2 text-lg font-extrabold"><Icon name="check" size={22} />Paid · it&apos;s yours</p>
-        )}
-        {result?.result === "won" && result.ms != null && (
-          <p className="text-sm text-ink/80">You tapped {tapTime(result.ms)} after it dropped · <span ref={latencyRef} /></p>
-        )}
-        <div className="flex flex-wrap gap-2">
-          <LinkButton href={`/o/${wonHere.orderId}`} icon={wonHere.state === "held" ? "rupee" : "chat"} variant="ghost">
-            {wonHere.state === "held" ? "Open order chat to pay" : "Open order chat"}
-          </LinkButton>
-          {autoOpen === wonHere.orderId && <Button variant="ghost" size="sm" onClick={onStay}>Stay here</Button>}
-        </div>
-        {autoOpen === wonHere.orderId && <p className="font-hand text-lg leading-tight">Opening your order chat…</p>}
+  if (!wonHere) return <span ref={latencyRef} className="sr-only" />;
+  const fresh = result?.result === "won" || !!promoText;
+  return (
+    <div className={cx("relative flex flex-col gap-2 overflow-hidden rounded-wobble border-[2.5px] border-ink bg-lime px-3 py-3 shadow-ink-sm", fresh && "pop-in")}>
+      {fresh && <Burst className="absolute -right-12 -top-14 size-28" />}
+      <p className="flex flex-wrap items-center gap-2 text-xl font-extrabold leading-tight">
+        <Icon name={promoText ? "sparkle" : "check"} size={24} stroke={3} />
+        {wonHere.state === "held" ? (promoText ?? "You got it!") : wonHere.state === "payment_claimed" ? "Payment sent" : "Paid · it's yours"}
+      </p>
+      {result?.result === "won" && result.ms != null && (
+        <p className="text-sm text-ink/80">You tapped {tapTime(result.ms)} after it dropped · <span ref={latencyRef} /></p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <LinkButton href={`/o/${wonHere.orderId}`} icon={wonHere.state === "held" ? "rupee" : "chat"} variant="ghost">
+          {wonHere.state === "held" ? "Open order chat to pay" : "Open order chat"}
+        </LinkButton>
+        {autoOpen === wonHere.orderId && <Button variant="ghost" size="sm" onClick={onStay}>Stay here</Button>}
       </div>
-    );
-  }
-  if (waitPos) {
-    return (
-      <div role="status" className="pop-in flex items-start gap-2 rounded-wobble border-[2.5px] border-ink bg-yellow px-3 py-3">
-        <Icon name="queue" size={24} className="mt-0.5 text-yellow-ink" />
-        <div>
-          <p className="text-lg font-extrabold leading-tight">You&apos;re #{waitPos} on the waitlist. We&apos;ll tell you the moment it&apos;s yours.</p>
-          <span ref={latencyRef} className="text-sm text-muted" />
-        </div>
-      </div>
-    );
-  }
-  if (result && result.result !== "won" && result.result !== "waitlisted" && result.itemId === live.itemId) {
-    return (
-      <div role="alert" className="pop-in flex items-start gap-2 rounded-wobble border-[2.5px] border-ink bg-peach px-3 py-3 font-semibold">
-        <Icon name="warning" size={22} className="mt-0.5 text-peach-ink" />
-        <p>{result.message}</p>
-      </div>
-    );
-  }
-  return null;
+      {autoOpen === wonHere.orderId && <p className="font-hand text-lg leading-tight">Opening your order chat…</p>}
+    </div>
+  );
 }
 
 /** Judge-mode coach: one line for the beat that is happening now, read from real state (never a timer script). */

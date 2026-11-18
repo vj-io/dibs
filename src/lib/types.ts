@@ -232,5 +232,5 @@ export type Api = {
 
   // judge mode (WP7)
   "POST /api/try/start": { req: { role: "buyer" | "seller"; name?: string }; res: { dropId: string; code: string; shopSlug: string; shareUrl: string; role: "buyer" | "seller"; script: { atMs: number | null; text: string }[] } };
-  "POST /api/try/tick": { req: { dropId: string }; res: { ok: true; status: "scheduled" | "live" | "ended" | null } };
+  "POST /api/try/tick": { req: { dropId: string; where?: "room" | "order" }; res: { ok: true; status: "scheduled" | "live" | "ended" | null } };
 };

@@ -17,6 +17,14 @@ test("piece 2: first bot per variant at 1.5-3 s leaves a unit, the rest come aft
   assert.equal(t.filter((x) => x.ms < 6000).length, 2);
 });
 
+test("piece 2: every variant keeps a unit for the first 6 s", () => {
+  for (let n = 0; n < 50; n++) {
+    const vs = [{ key: "a", qty: 1 }, { key: "b", qty: 2 }, { key: "c", qty: 3 }];
+    const t = planTaps("buyer", 2, vs);
+    for (const v of vs) assert.ok(t.filter((x) => x.variant === v.key && x.ms < 6000).length <= v.qty - 1, v.key);
+  }
+});
+
 test("seller: 3 fast taps, 5 more over 1-6 s", () => {
   const t = planTaps("seller", 1, JHUMKA);
   assert.equal(t.filter((x) => x.ms <= 400).length, 3);

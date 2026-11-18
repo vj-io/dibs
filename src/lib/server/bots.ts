@@ -18,7 +18,7 @@ type Item = { id: string; position: number; variants: { key: string; qty: number
 /** The buyer script's clock (ms after /try/start unless noted). Sandbox holds last 20 s. */
 export const SCRIPT = {
   holdMs: 20_000, firstLiveMs: 5000, fallbackNextMs: 85_000, endMs: 180_000, pieceGapMs: 25_000,
-  confirmMs: 3000, afterPaidNextMs: 7000, scamMs: 30_000, chatEveryMs: 3000, promoteWithinMs: 43_000,
+  confirmMs: 3000, roomNextMs: 3000, confirmFallbackMs: 33_000, scamMs: 30_000, chatEveryMs: 3000, promoteWithinMs: 43_000,
 } as const;
 
 const LINES = [
@@ -48,7 +48,8 @@ export function planTaps(role: Slot["role"], position: number, variants: Item["v
   } else if (position === 1) {
     for (const v of variants) add(v.key, v.qty + 2, 80, 400);        // every variant: sold, then 2 bots waiting (judge is #3)
   } else if (position === 2) {
-    for (const v of variants) { add(v.key, Math.min(1, v.qty - 1), 1500, 3000); add(v.key, v.qty, 6000, 9000); } // a quick tap wins
+    // every variant keeps at least one unit for the first 6 s, so whichever the judge picks is winnable
+    for (const v of variants) { add(v.key, Math.min(1, v.qty - 1), 1500, 3000); add(v.key, v.qty, 6000, 9000); }
   } else {
     for (const v of variants) add(v.key, v.qty + 1, 300, 5000);
   }
@@ -171,15 +172,30 @@ export async function onItemLive(slot: Slot, itemId: string) {
   await schedule(slot.dropId, rows, it.live_at);
 }
 
-/** Buyer script: the judge tapped "I've paid" -> demo staff confirms 3 s later, piece 2 a few seconds after. */
+/**
+ * Buyer script: the judge tapped "I've paid" -> demo staff confirms 3 s later. Piece 2 then waits for the judge to be
+ * back in the sale room (roomTick), with a fallback 30 s after the confirm.
+ */
 export async function onPaidClaim(slot: Slot, orderId: string) {
   if (slot.role !== "buyer") return;
   const [o] = await sql`select buyer_id from orders where id = ${orderId} and drop_id = ${slot.dropId}`;
   if (o?.buyer_id !== slot.judgeId) return;
   await schedule(slot.dropId, [
     { ms: SCRIPT.confirmMs, action: "confirm", payload: { orderId } },
-    { ms: SCRIPT.afterPaidNextMs, action: "next", payload: { ifPosition: 1 } },
+    { ms: SCRIPT.confirmFallbackMs, action: "next", payload: { ifPosition: 1 } },
   ]);
+}
+
+/** The judge's screen says it is on the sale room: after the confirm, piece 2 goes live 3 s later (once). */
+export async function roomTick(dropId: string) {
+  const slot = await slotOf(dropId);
+  if (!slot || slot.role !== "buyer") return;
+  await sql`
+    insert into bot_schedule (drop_id, due_at, action, payload)
+    select ${dropId}, clock_timestamp() + make_interval(secs => ${SCRIPT.roomNextMs / 1000}), 'next', ${sql.json({ ifPosition: 1, afterRoom: true })}
+     where exists (select 1 from bot_schedule where drop_id = ${dropId} and action = 'confirm' and done_at is not null)
+       and not exists (select 1 from bot_schedule where drop_id = ${dropId} and action = 'next' and payload ? 'afterRoom')
+       and (select coalesce(max(position), 0) from drop_items where drop_id = ${dropId} and state <> 'queued') = 1`;
 }
 
 export async function cancelPending(dropId: string) {

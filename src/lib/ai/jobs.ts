@@ -35,15 +35,21 @@ export async function answerQuestion(text: string, faq: string[], live: LiveKnow
   const knowledge = buildKnowledge(faq, live);
   if (!knowledge) return null;
   const out = await generateJson("answer", AnswerModelSchema,
-    `You are the assistant of a small Indian shop's live sale. Answer the buyer's question using ONLY the KNOWLEDGE below. ` +
-    `Never invent or guess a price, discount, delivery date, stock count, or promise; if the knowledge does not contain the answer, set answerable to false. ` +
-    `Reply in the buyer's own language and register (English, Hindi, or Hinglish in Roman letters), friendly, at most 160 characters, no emojis needed. ` +
+    `You answer factual questions in a small Indian shop's live sale chat, using ONLY the KNOWLEDGE below. ` +
+    `Answer only what was asked, in one short sentence, in a neutral, plain tone. ` +
+    `No selling or urging (never "grab it", "hurry", "don't miss"), no exclamation marks, no emojis. ` +
+    `Mention stock or what is left only if the question asks about availability. ` +
+    `If the message is not a real question, or it is unclear which piece it is about, or the knowledge does not contain the answer, set answerable to false. ` +
+    `Never invent or guess a price, discount, delivery date, stock count, or promise. ` +
+    `Reply in the buyer's own language (English, Hindi, or Hinglish in Roman letters), at most 160 characters. ` +
     `Answer {"answerable": boolean, "answer": string}. ${SAFETY}\n\nKNOWLEDGE:\n${knowledge}`,
     `Buyer question: ${JSON.stringify(text.slice(0, 300))}`,
     { timeoutMs: 3000 });
   if (!out) return null;
   const v = validateAnswer(out, knowledge);
-  return v.answerable ? v.answer : null;
+  // tone guard: the prompt asks for a plain sentence; anything shouty or with emojis is dropped, not posted
+  if (!v.answerable || /!|\p{Extended_Pictographic}/u.test(v.answer)) return null;
+  return v.answer;
 }
 
 // ---------- scam shield ----------

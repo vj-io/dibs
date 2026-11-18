@@ -9,7 +9,9 @@ const K = buildKnowledge(faq, live);
 test("isQuestion", () => {
   for (const t of ["price?", "kitne ka hai", "COD hai kya", "M size hai?", "kab milega", "shipping?", "is it original", "silver ya gold", "delivery kitne din", "milega?", "colour?", "Is this available 👀?"])
     assert.ok(isQuestion(t), t);
-  for (const t of ["booked", "wow 😍", "mine!", "#3 M", "nice saree", "done"]) assert.ok(!isQuestion(t), t);
+  for (const t of ["booked", "wow 😍", "mine!", "#3 M", "nice saree", "done", "Love the colour", "Beautiful work", "So pretty", "silver", "M",
+    "gold colour 😍", "waiting for the choker", "what a beauty", "price list is nice", "first time here, nice"]) assert.ok(!isQuestion(t), t);
+  for (const t of ["silver hai kya", "COD milega", "price?", "any discount?", "which size is left", "Is it 925 silver"]) assert.ok(isQuestion(t), t);
 });
 test("buildKnowledge", () => {
   assert.match(K, /Price: ₹1,450\b/);

@@ -157,3 +157,33 @@ test("pre-message callback: rules only, block with the PRD copy, pass on any dou
   assert.deepEqual(await handlePreMessage(pm(judge(), "rahul@okaxis", "wrong"), { creds }), { pass: 1 });
   assert.deepEqual(await handlePreMessage(new Request("http://x", { method: "POST", body: "{" }), { creds }), { pass: 1 });
 });
+
+const clearThrottles = () => sql`delete from throttles where key like ${"%" + ch + "%"} or key like ${"%" + s.dropId + "%"}`;
+
+test("demo bots: one assistant answer and one prompt per piece; humans still answered", async () => {
+  await clearThrottles();
+  said.length = 0;
+  const bot = (n: string) => ({ channelId: ch, fromUserId: n, messageId: id() });
+  const fromBot = async (uid: string, text: string) => {
+    await sql`delete from throttles where key = ${"ans:" + ch}`;              // pretend 10 s passed between lines
+    return handleRoomText({ ...bot(uid), text }, fakes);
+  };
+  assert.equal(await fromBot("demo_bot_05", "price?"), "answered");
+  assert.equal(await fromBot("demo_bot_06", "COD hai?"), "passed", "second bot question on the same piece");
+  assert.equal(await fromBot("demo_bot_07", "booked! silver"), "prompted");
+  assert.equal(await fromBot("demo_bot_08", "mine silver"), "passed", "second bot prompt on the same piece");
+  await sql`delete from throttles where key = ${"ans:" + ch}`;
+  assert.equal(await handleRoomText({ channelId: ch, fromUserId: judge(), messageId: id(), text: "returns kab tak?" }, fakes), "answered", "a human question");
+  assert.equal(said.length, 2);
+});
+
+test("the assistant never answers a message sent to review, and skips an answer once the piece changed", async () => {
+  await clearThrottles();
+  calls = [];
+  assert.equal(await handleRoomText({ channelId: ch, fromUserId: judge(), messageId: id(), text: "dm me, what price?" }, fakes), "passed");
+  assert.ok(!calls.includes("answer"));
+  const moving: TextDeps = { ...fakes, answerQuestion: async () => { await sql`select drop_next(${s.dropId}, ${s.ownerId})`; return "It is ₹1,450."; } };
+  said.length = 0;
+  assert.equal(await handleRoomText({ channelId: ch, fromUserId: judge(), messageId: id(), text: "kitne ka hai?" }, moving), "passed");
+  assert.equal(said.length, 0);
+});

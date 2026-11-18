@@ -80,6 +80,11 @@ export async function handleRoomText(m: RoomText, deps: TextDeps = realDeps): Pr
   // are never moderated; anything else (a forged or replayed body naming a stranger) is ignored.
   if (!isStaff && (!buyerId || from.startsWith("s_"))) return "ignored";
 
+  const isBot = from.startsWith("demo_bot_");
+  // demo bots' canned lines earn at most one assistant answer and one prompt per piece (per drop between pieces)
+  const botOnce = (what: string) => take(`bot${what}:${ctx.drop_id}:${ctx.item_id ?? "none"}`, 3600);
+  let flagged = false; // blocked or sent to review: the assistant never answers it
+
   // (a) scam shield: everyone except the shop's team
   if (!isStaff) {
     // a model call per borderline message, at most 1 per buyer per 10 s and 6 per room per minute
@@ -98,6 +103,7 @@ export async function handleRoomText(m: RoomText, deps: TextDeps = realDeps): Pr
       return "blocked";
     }
     if (v.action === "review") {
+      flagged = true;
       await sql`insert into moderation_events (drop_id, buyer_id, nexconn_msg_id, rule, action) values (${ctx.drop_id}, ${buyerId}, ${m.messageId}, ${v.rule}, 'review')`;
     }
   }
@@ -106,7 +112,7 @@ export async function handleRoomText(m: RoomText, deps: TextDeps = realDeps): Pr
   if (buyerId && ctx.status === "live" && ctx.item_id && ctx.item_state === "live" && ctx.variants) {
     const live = { itemId: ctx.item_id, position: ctx.position!, variants: ctx.variants.map(({ key, label }) => ({ key, label })) };
     const intent = await deps.resolveClaimIntent(text, live, ctx.recent.filter((n) => n !== ctx.position));
-    if (intent.kind === "prompt") {
+    if (intent.kind === "prompt" && (!isBot || (await botOnce("prompt")))) {
       const [r] = await sql`select rate_add(${`prompt:${buyerId}:${ctx.item_id}`}, 86400) as n`;
       if (r.n === 1) {
         const label = ctx.variants.find((v) => v.key === intent.variantKey)?.label ?? null;
@@ -118,16 +124,20 @@ export async function handleRoomText(m: RoomText, deps: TextDeps = realDeps): Pr
   }
 
   // (c) answer bot: at most 1 answer per 10 s per room, the same question not twice in 60 s
-  if (!isStaff && isQuestion(text)) {
+  if (!isStaff && !flagged && isQuestion(text)) {
     const norm = text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim().slice(0, 200);
     const qKey = `ansq:${m.channelId}:${createHash("sha1").update(norm).digest("hex").slice(0, 16)}`, roomKey = `ans:${m.channelId}`;
     if (!(await take(qKey, 60))) return "passed";
     if (!(await take(roomKey, 10))) { await sql`delete from throttles where key = ${qKey}`; return "passed"; }
+    if (isBot && !(await botOnce("answer"))) { await sql`delete from throttles where key in (${qKey}, ${roomKey})`; return "passed"; }
     const live = ctx.item_id && ctx.title && ctx.variants
       ? { title: ctx.title, pricePaise: Number(ctx.price_paise), note: ctx.note, variants: ctx.variants.map(({ label, left }) => ({ label, left })) }
       : null;
     const answer = await deps.answerQuestion(text, ctx.faq ?? [], live);
     if (!answer) { await sql`delete from throttles where key = ${roomKey}`; return "passed"; }
+    // the answer is about the piece that was live when asked: skip it if the room has moved on
+    const [now] = await sql`select live_item_id from drops where id = ${ctx.drop_id}`;
+    if ((now?.live_item_id ?? null) !== (ctx.item_id ?? null)) { await sql`delete from throttles where key = ${roomKey}`; return "passed"; }
     await deps.sendAssistant(m.channelId, `“${text.slice(0, 80)}” ${answer}`);
     return "answered";
   }
