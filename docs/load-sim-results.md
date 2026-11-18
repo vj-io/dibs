@@ -134,3 +134,35 @@ Claim results: http_500 185, waitlisted 113, won 2. Rate-limited (429): 0. Error
 | Orders = units | PASS | 2 orders |
 | Every tap got a definite result (no 5xx, no timeouts) | FAIL | 115/300 definite, errors {"HTTP 500":248} |
 | No rate-limited (429) responses | PASS | 0 responses |
+
+## 2026-11-18T23:46:01.175Z · deployed target
+
+- Target: https://tapdibs.vercel.app
+- Git commit: f5f52cc
+- Shape: 400 buyers, 300 claim taps at uniformly random offsets inside 500 ms on one variant with 2 units, 100 viewers each fetching drop state once. Waitlist cap 200.
+- Burst spread achieved: first to last claim send 532 ms (window 500 ms)
+- Run time: 30.7 s including setup, warm-up and verification (before cleanup)
+- The target must share SESSION_SECRET and the database with the machine running this script (production does); sessions are minted locally, so there are no join calls.
+- Latencies are client-observed from one laptop, not from the buyers' network, and include TLS and connection set-up for each simulated buyer.
+
+| Request | n | min ms | median ms | p95 ms | p99 ms | max ms |
+|---|---|---|---|---|---|---|
+| POST /api/claims (all taps) | 300 | 2994 | 3950 | 4487 | 4691 | 4760 |
+| GET /api/drops/:id/state (viewers) | 100 | 3056 | 3963 | 4634 | 4826 | 4870 |
+
+Server-side `ms` (milliseconds after the item went live, server clock) for the 0 winners: -
+
+Warm-up (separate drop, before the burst): state cold 531 ms (500); state warm 3671 ms (500); claim cold 3090 ms (http_500); claim warm 1 3338 ms (http_500); claim warm 2 3049 ms (http_500)
+
+Claim results: http_500 300. Rate-limited (429): 0. Errors (5xx, timeouts, network): {"HTTP 500":400}.
+
+| Invariant (checked in the database) | Result | Detail |
+|---|---|---|
+| Zero double sells: held claims on the variant = units | FAIL | 0 held / 2 units |
+| Winners reported by the API = units | FAIL | 0 won responses |
+| Stock available = 0, never negative (total 2) | FAIL | available 2, total 2 |
+| Waitlisted = min(waitlist_max, taps - units), positions 1..n unique and in committed_at order | FAIL | 0 waitlisted, expected 200, positions ok |
+| No buyer has two active claims on the item | PASS | 0 buyers |
+| Orders = units | FAIL | 0 orders |
+| Every tap got a definite result (no 5xx, no timeouts) | FAIL | 0/300 definite, errors {"HTTP 500":400} |
+| No rate-limited (429) responses | PASS | 0 responses |
