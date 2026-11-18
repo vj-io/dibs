@@ -42,7 +42,11 @@ begin
     from drop_items i join drops d on d.id = i.drop_id join shops s on s.id = d.shop_id
    where i.id = p_item;
   if not found then return jsonb_build_object('notFound', true); end if;
-  v_sweep := sweep_drop(v_drop);
+  -- sweep only when a hold in this drop has actually run out: the sweep takes the drop lock, and in a burst
+  -- every tap would otherwise queue for that lock twice
+  if exists (select 1 from claims c where c.drop_id = v_drop and c.state = 'held' and c.expires_at <= now()) then
+    v_sweep := sweep_drop(v_drop);
+  end if;
   v_claim := claim_dibs(p_item, p_variant_key, p_buyer, p_received);
   return jsonb_build_object(
     'dropId', v_drop, 'maxHolds', v_max_holds, 'holdSeconds', _hold_secs(v_drop, p_buyer),
