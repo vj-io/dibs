@@ -228,7 +228,10 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
   const variants = live?.variants ?? [];
   const inStock = variants.filter((v) => v.left > 0);
   const chosen = pick && pick.itemId === live?.itemId && variants.some((v) => v.key === pick.key) ? pick.key
-    : variants.length === 1 ? variants[0].key : inStock.length === 1 ? inStock[0].key : null; // one choice left: preselected
+    : variants.length === 1 ? variants[0].key : inStock.length === 1 ? inStock[0].key // one choice left: preselected
+    // everything sold out: preselect the shortest waitlist, so one tap on Dibs! still joins a line (bots can sell a piece out in a second)
+    : inStock.length === 0 && variants.length ? [...variants].sort((a, b) => a.waiting - b.waiting)[0].key
+    : null;
   const chosenV = variants.find((v) => v.key === chosen);
   const settled = (r: Result) => !!me && me.startedAt > r.at; // my status fetched after this result: it is the truth
   const hold = live ? me?.holds.find((h) => h.itemId === live.itemId) : undefined;

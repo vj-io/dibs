@@ -86,7 +86,7 @@ A fair first tap has to be decided in one place. In Dibs that place is a Postgre
 - **Automatic waitlist promotion.** Bots and real buyers alike: hold ends, next in line gets it, a private alert says so.
 - **One order chat per winner.** A group channel with the buyer, the assigned staff member and the bot. Nothing gets lost in DMs. Orders go to the owner above a value the owner sets, otherwise to the staff member with the fewest open orders.
 - **Scam shield.** Phone numbers, UPI IDs and payment links from anyone who is not staff are blocked in the sale room and logged without storing the text. The payment card says: pay only here, never to a number in chat.
-- **Judge mode with honest bots.** A judge can finish the whole loop alone. Bots are labelled, tap through the same claim function, never pay, and never count in real numbers.
+- **Judge mode with honest bots.** A judge can finish the whole loop alone. Bots are labelled, tap through the same claim function, never pay in the buyer demo, and never count in real numbers.
 - **AI as a helper, never the decider.** A typed "booked" gets a private one-tap prompt, never a claim. An answer bot uses only the shop's FAQ lines. AI never decides who was first, confirms a payment or changes stock.
 
 ## 6. Business and growth

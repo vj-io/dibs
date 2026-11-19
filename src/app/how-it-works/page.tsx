@@ -32,7 +32,7 @@ const MEASURED: { what: string; value: string; note: string }[] = [
 ];
 
 const NOT_VERIFIED = [
-  "The message:send webhook and the pre-message callback have not been tested against a real Nexconn delivery. They need the deployed URL and a Console setting.",
+  "The pre-message callback is not available on our Nexconn plan (the option is greyed out in the Console), so the scam shield removes a message after delivery instead of before it.",
   "The Call SDK has not been tested.",
   "Participant joined and banned events never fired in our runs, so the viewer count is read from the server instead.",
   "Latency from phones on 4G, more than two simultaneous clients, and behaviour at the plan's connection limit are not measured.",
@@ -187,7 +187,7 @@ export default function HowItWorks() {
                 "Bots exist only in the demo room, never in a real shop's drop.",
                 "Every bot is labelled 🤖 wherever it appears.",
                 "Their taps are scripted: Demo bots tap at set delays; the claim logic is the same as a real drop. They call the same claim function and queue like anyone else.",
-                "Bots never pay. Their holds expire, which is how you see a waitlist promotion in the demo.",
+                "In the buyer demo, bots never pay. Their holds expire, which is how you see a waitlist promotion. In the seller demo, a few bots tap I've paid with a demo UTR so you have orders to confirm.",
                 "Bots are excluded from every real number, including the impact page.",
               ].map((t) => (
                 <li key={t} className="flex items-start gap-2"><Icon name="robot" size={22} stroke={2.4} className="mt-0.5 shrink-0 text-violet-ink" /><span>{t}</span></li>
