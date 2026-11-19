@@ -71,7 +71,7 @@ https://tapdibs.vercel.app
 
 Judge demo to mention in any "how to test" field: `https://tapdibs.vercel.app/try` (returned 200 when last checked).
 
-**Public GitHub repository** (root URL only; the form rejects private or missing repos, so make it public first)
+**Public GitHub repository** (root URL only; public since 19 Nov 2026)
 
 ```
 https://github.com/vj-io/dibs
