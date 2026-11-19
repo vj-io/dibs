@@ -1,0 +1,7 @@
+# Only the auth settings Dibs needs; everything not declared here is left as it is on the project.
+# (Email templates cannot be changed on the free tier with the built-in mailer.)
+project_id = "ebfsrmtzqyrwlfiabgyo"
+
+[auth]
+site_url = "https://tapdibs.vercel.app"
+additional_redirect_urls = ["https://tapdibs.vercel.app/seller", "http://localhost:3100/seller"]
