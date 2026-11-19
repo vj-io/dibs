@@ -35,8 +35,19 @@ function checkShape(row: J) {
   if (row.payload.variants) for (const v of row.payload.variants) for (const k of ["key", "label", "left", "waiting"]) assert.ok(k in v, "VariantLive." + k);
 }
 
+test("a demo drop's pay card cannot be paid", async () => {
+  const f = await makeFixture({ items: [{ variants: [{ key: "M", qty: 1 }] }], buyers: 1, staff: 1 });
+  const from = await maxOutbox(f.dropId);
+  await claim(f.items[0].id, "M", f.buyers[0]);
+  const pay = (await outbox(f.dropId, from)).find((x) => x.msg_type === "DB:Pay")!;
+  assert.equal(pay.payload.upiLink, "Dibs demo: no real payment");
+  assert.equal(pay.payload.demo, true);
+});
+
 test("a win writes order, outbox in order with codec shapes, and no phone numbers", async () => {
   const f = await makeFixture({ items: [{ variants: [{ key: "M", qty: 1 }, { key: "L", qty: 1 }] }], buyers: 2, staff: 1 });
+  await admin`update drops set is_sandbox = false where id = ${f.dropId}`; // a real drop: the pay card carries a upi:// link (0009 strips it from demo drops)
+  await admin`update buyers set is_sandbox = false where id = any(${f.buyers})`;
   const from = await maxOutbox(f.dropId);
   const r = await claim(f.items[0].id, "M", f.buyers[0]);
   assert.equal(r.result, "won");

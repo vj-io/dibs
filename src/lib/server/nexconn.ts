@@ -204,12 +204,28 @@ export const unban = (channelId: string, userId: string) =>
 // ------------------------------------------------------------------ group channel (order room, desk)
 
 const GROUP_EXISTS = 25409;
-/** Create the group owned by dibs_bot with these members, or add them if it already exists. */
+/**
+ * Create the group with these members, or add them if it already exists.
+ * Nexconn lets one user be in 1,000 groups (create answers 22413 after that; seen 19 Nov 2026 when dibs_bot, then a
+ * member of every order room, reached it). So the bot stays out of order rooms: the buyer owns the room, and the bot's
+ * cards still arrive because the Server API lets a non-member send. A team desk (one per shop) keeps the bot as owner,
+ * because staff leave desks and an owner cannot leave.
+ * ponytail: a staff member is still in every order room of the shop, so 1,000 open order rooms per staff member is the
+ * ceiling; dismiss rooms of long-finished orders when a shop gets near it.
+ */
 export async function ensureGroup(channelId: string, name: string, memberIds: string[]): Promise<void> {
   await ensureBot();
-  const userIds = [...new Set([BOT_ID, ...memberIds])];
-  const b = await call("group_create", "/v4/group-channel/create", { channelId, name: name.slice(0, 64), owner: BOT_ID, userIds }, [GROUP_EXISTS]);
+  const people = [...new Set(memberIds.filter((id) => id !== BOT_ID))];
+  const botOwns = channelId.startsWith("desk_") || !people.length;
+  const userIds = botOwns ? [BOT_ID, ...people] : people;
+  const b = await call("group_create", "/v4/group-channel/create", { channelId, name: name.slice(0, 64), owner: userIds[0], userIds }, [GROUP_EXISTS]);
   if (b.code === GROUP_EXISTS) await addGroupMembers(channelId, userIds);
+}
+
+const GROUP_GONE = 25410; // "Group channel ID does not exist" (measured 19 Nov 2026): already gone counts as done
+/** Deletes a group for good (its order or shop row was deleted). */
+export async function dismissGroup(channelId: string): Promise<number> {
+  return (await call("group_dismiss", "/v4/group-channel/dismiss", { channelId }, [GROUP_GONE])).code ?? 0;
 }
 
 /** Removes members from a group (a removed staff member leaves the desk and their order rooms). */

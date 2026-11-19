@@ -3,6 +3,8 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { fn, sql } from "@/lib/server/db";
 import { fail, json, route } from "@/lib/server/http";
+import { flags } from "@/lib/server/flags";
+import { dismissGroup } from "@/lib/server/nexconn";
 import { drainOutbox } from "@/lib/server/outbox";
 import type { SweepResult } from "@/lib/server/queries";
 
@@ -38,6 +40,16 @@ export const GET = route("GET /api/cron/sweep", async (req: Request) => {
     } catch (e) { ok = false; console.error("[cron] sweep", d.id, e); }
   }
   const outbox = await drainOutbox({ max: 500, budgetMs: Math.max(5000, 50_000 - (Date.now() - t0)) });
+  // groups whose order or shop row was deleted (0014): dismiss them, or their members creep toward Nexconn's 1,000-group cap
+  let dismissed = 0;
+  if (flags.mode === "nexconn") {
+    const dead = await sql<{ channel_id: string }[]>`select channel_id from dead_groups limit 60`.catch(() => []);
+    for (const g of dead) {
+      if (Date.now() - t0 > 52_000) break;
+      try { await dismissGroup(g.channel_id); await sql`delete from dead_groups where channel_id = ${g.channel_id}`; dismissed++; }
+      catch (e) { console.error("[cron] dismiss", g.channel_id, e instanceof Error ? e.message : e); break; }
+    }
+  }
   await sql`insert into health_events (kind, ok, code, ms) values ('cron_sweep', ${ok}, ${String(drops.length)}, ${Date.now() - t0})`.catch(() => {});
-  return json({ drops: drops.length, endedDemos: stale.length, ...total, outbox });
+  return json({ drops: drops.length, endedDemos: stale.length, ...total, outbox, dismissed });
 });

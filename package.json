@@ -9,7 +9,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "node --test \"src/**/*.test.ts\"",
-    "test:db": "node --env-file=.env.local --test \"tests/db/*.test.ts\"",
+    "test:db": "node --env-file=.env.local --test --test-concurrency=1 \"tests/db/*.test.ts\"",
     "db:apply": "node --env-file=.env.local scripts/db-apply.mjs",
     "test:sandbox": "node --env-file=.env.local --test --test-concurrency=1 \"tests/sandbox/*.test.ts\"",
     "test:api": "API_BASE=${API_BASE:-http://localhost:3100} node --env-file=.env.local --test \"tests/api/*.test.ts\"",
