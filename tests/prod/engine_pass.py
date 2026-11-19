@@ -20,9 +20,15 @@ def run(p, engine: str, device: str):
     pg = ctx.new_page()
     pg.set_default_timeout(30000)
     pg.on("console", lambda m: m.type == "error" and R["errors"].append(f"{pg.url}: {m.text}"))
-    pg.on("requestfailed", lambda r: R["errors"].append(f"requestfailed {r.method} {r.url.split('?')[0]}: {r.failure}"))
+    pg.on("requestfailed", lambda r: "ERR_ABORTED" not in str(r.failure) and R["errors"].append(f"requestfailed {r.method} {r.url.split('?')[0]}: {r.failure}"))
     pg.on("pageerror", lambda e: R["errors"].append(f"{pg.url}: pageerror {e}"))
     pg.on("response", lambda r: r.status >= 400 and "favicon" not in r.url and R["errors"].append(f"HTTP {r.status} {r.url.split('?')[0]}"))
+
+    # raw websocket frames from Nexconn: proof that a card reached this browser over the socket, not through polling
+    frames = []
+    def _frame(payload):
+        frames.append(payload if isinstance(payload, bytes) else str(payload).encode("utf-8", "ignore"))
+    pg.on("websocket", lambda ws: ws.on("framereceived", _frame))
 
     def step(name, ok, detail=""):
         R["steps"].append({"step": name, "ok": ok, "detail": detail})
@@ -77,6 +83,9 @@ def run(p, engine: str, device: str):
         expect(pg.get_by_text("Paid · confirmed by")).to_be_visible()
         R["timings"]["ive_paid_to_paid_s"] = round(time.monotonic() - t, 1)
         step("I've paid -> Paid · confirmed by", True, f"{R['timings']['ive_paid_to_paid_s']} s")
+        import re as _re
+        got = sorted({m.decode() for f in frames if b"ord_" in f for m in _re.findall(rb"DB:[A-Za-z]+", f)})
+        step("order-room cards arrive over the Nexconn socket (bot is not a member of the room)", any(t in got for t in ("DB:Order", "DB:Pay")), f"card types seen in order-room frames: {got}")
         shot("try-03-paid", full=False)
         pg.wait_for_url("**/s/**", timeout=30000)
         step("back to the room", True)

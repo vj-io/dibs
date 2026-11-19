@@ -14,7 +14,7 @@ BASE = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:3100"
 SHOTS = ROOT / ".shots" / "club"
 SHOTS.mkdir(parents=True, exist_ok=True)
 W, H = 360, 740
-errors, overflow, proved, shop_ids, buyer_ids = [], [], [], [], []
+errors, overflow, proved, shop_ids, buyer_ids, emails = [], [], [], [], [], []
 
 
 def ok(msg):
@@ -48,12 +48,13 @@ def cleanup():
     js = """
       import postgres from "postgres";
       const sql = postgres(process.env.DATABASE_URL_SESSION, { ssl: "require", max: 1 });
-      const [shops, buyers] = JSON.parse(process.argv[1]);
+      const [shops, buyers, emails] = JSON.parse(process.argv[1]);
       if (shops.length) { await sql`delete from outbox where channel_id in (select nexconn_club_id from shops where id in ${sql(shops)})`;
                           await sql`delete from shops where id in ${sql(shops)}`; }
       if (buyers.length) await sql`delete from buyers where id in ${sql(buyers)}`;
+      if (emails.length) await sql`delete from auth.users where email in ${sql(emails)}`;
       await sql.end();"""
-    subprocess.run(["node", "--env-file=.env.local", "--input-type=module", "-e", js, json.dumps([shop_ids, buyer_ids])], cwd=ROOT, check=True)
+    subprocess.run(["node", "--env-file=.env.local", "--input-type=module", "-e", js, json.dumps([shop_ids, buyer_ids, emails])], cwd=ROOT, check=True)
 
 
 def flow(pw):
@@ -61,7 +62,12 @@ def flow(pw):
     expect.set_options(timeout=60000)
     # seller: shop, piece, drop an hour out (API; the seller screens have their own e2e)
     sctx = browser.new_context(viewport={"width": W, "height": H})
-    post(sctx, "/api/seller/session", {"testEmail": f"club-{uuid.uuid4().hex[:8]}@dibs.test"})
+    email = f"club-{uuid.uuid4().hex[:8]}@dibs.test"
+    if "localhost" in BASE:
+        post(sctx, "/api/seller/session", {"testEmail": email})
+    else:  # a deployment has no test sign-in: a password account, deleted in cleanup (no email is sent)
+        emails.append(email)
+        post(sctx, "/api/seller/signup", {"email": email, "password": uuid.uuid4().hex + "Aa1!", "name": "Club Test"})
     slug = f"club-{uuid.uuid4().hex[:6]}"
     shop = post(sctx, "/api/shops", {"name": "Meera Jewels", "slug": slug, "upiId": "meera@okaxis", "payeeName": "Meera", "holdMinutes": 10})
     shop_ids.append(shop["shopId"])
@@ -125,7 +131,7 @@ def flow(pw):
     shot(sp, "05-seller-club")
     expect(bp.get_by_role("list", name="Announcements")).to_contain_text("Gold versions are coming next week!", timeout=10000)
     shot(bp, "06-buyer-live-announcement")
-    ok("seller announcement reached the buyer's open page live (mock bus SSE, no reload)")
+    ok("seller announcement reached the buyer's open page live (no reload)")
 
     # paid order -> review in the UI
     post(sctx, f"/api/drops/{drop['dropId']}/live")
