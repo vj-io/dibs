@@ -11,9 +11,9 @@ export type ScriptStep = { atMs: number | null; text: string };
 export const SCRIPTS: Record<TryRole, ScriptStep[]> = {
   buyer: [
     { atMs: 0, text: "You're in a demo room with 40 🤖 demo buyers. Nothing here is real money." },
-    { atMs: 5000, text: "Piece 1 goes live. Ten demo bots tap 0.08–0.4 s after it does." },
-    { atMs: 25_000, text: "Bots never pay: each bot hold runs out after 20 s and the next in line is promoted." },
-    { atMs: null, text: "Demo: you get 90 seconds to pay; bots get 20" },
+    { atMs: null, text: "Piece 1 goes live 5 s after you are in the room. Ten demo bots tap 0.08–0.4 s after it does." },
+    { atMs: 18_000, text: "Bots never pay: each bot hold runs out after 12 s and the next in line is promoted." },
+    { atMs: null, text: "Demo: you get 90 seconds to pay; bots get 12" },
     { atMs: null, text: "When it's yours, tap I've paid. Asha (demo staff) confirms 3 s later." },
     { atMs: null, text: "Back in the sale room, piece 2 drops 3 s later. Every size keeps one piece for 6 s, so a quick tap wins it outright." },
     { atMs: 180_000, text: "The demo room closes after 3 minutes." },
@@ -21,8 +21,8 @@ export const SCRIPTS: Record<TryRole, ScriptStep[]> = {
   seller: [
     { atMs: 0, text: "40 🤖 demo buyers are in your room. Nothing drops until you press Drop next." },
     { atMs: null, text: "Each piece: bots tap within 0.08–0.4 s, and more over the next 6 s." },
-    { atMs: null, text: "Bot holds run out after 20 s (bots never pay): watch the ledger promote the next buyer." },
-    { atMs: null, text: "Demo: you get 90 seconds to pay; bots get 20" },
+    { atMs: null, text: "Bot holds run out after 12 s (bots never pay): watch the ledger promote the next buyer." },
+    { atMs: null, text: "Demo: you get 90 seconds to pay; bots get 12" },
     { atMs: null, text: "Two bots tap I've paid: mark them paid, then shipped." },
     { atMs: null, text: "One bot posts a UPI ID: the scam shield hides it and logs it. Mute that bot." },
   ],

@@ -20,6 +20,8 @@ export interface Live {
   markRead(groupId: string, ids: string[]): void;
   onReceipts(cb: (r: Receipt[]) => void): () => void;
   onAlert(cb: (card: Card) => void): () => void;
+  /** Shop club subchannel `<clubId>.<sub>` (Nexconn community channel; a mock group in mock mode). Members only. */
+  watchClub(key: string, cb: (m: LiveMsg) => void): () => void;
 }
 
 /** A refused live action. `code` is the Nexconn code (23408 muted, 23409 banned, 23410 room gone) or ours. */
@@ -176,6 +178,10 @@ async function nexconn(cfg: PublicConfig, firstToken: Promise<{ userId: string; 
         const emit = (x: LiveMsg) => {
           if (t === nc.ChannelType.OPEN) rooms.get(x.channel)?.emit(x);
           else if (t === nc.ChannelType.GROUP) groups.get(x.channel)?.emit(x);
+          else if (t === nc.ChannelType.COMMUNITY) { // shop club: keyed <clubId>.<subchannel>
+            const k = `${x.channel}.${(m.channelIdentifier as InstanceType<NC["CommunitySubChannelIdentifier"]>).subChannelId}`;
+            groups.get(k)?.emit({ ...x, channel: k });
+          }
         };
         if (msg.kind === "card") emit(msg); // cards first, without waiting on a name
         else void named(msg).then(emit);
@@ -270,6 +276,7 @@ async function nexconn(cfg: PublicConfig, firstToken: Promise<{ userId: string; 
     },
     onReceipts: receipts.on,
     onAlert: alerts.on,
+    watchClub(key, cb) { return (this as Live).watchGroup(key, cb); },
     close() { kicked = true; clearTimeout(retry); void nc.NCEngine.disconnect().catch(() => {}); },
   };
 }
@@ -333,6 +340,7 @@ function mock(userId: string, as?: "buyer" | "staff"): Conn {
     markRead() {},
     onReceipts: () => () => {},
     onAlert: alerts.on,
+    watchClub(key, cb) { return (this as Live).watchGroup(key, cb); },
     close() { closed = true; es?.close(); },
   };
 }

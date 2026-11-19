@@ -17,7 +17,7 @@ export type Card =
   | { t: "DB:Alert"; kind: "promoted" | "expiring" | "paid" | "shipped" | "not_received" | "expired" | "blocked" | "missed"; orderId: string | null; dropCode: string | null; text: string }
   | { t: "DB:Prompt"; itemId: string; position: number; variant: string | null; text: string }
   | { t: "DB:Order"; orderId: string; orderNo: number; item: string; variantLabel: string; pricePaise: number; expiresAt: string | null; photo: string | null }
-  | { t: "DB:Pay"; orderId: string; amountPaise: number; upiId: string; payee: string; upiLink: string }
+  | { t: "DB:Pay"; orderId: string; amountPaise: number; upiId: string; payee: string; upiLink: string; demo?: boolean }   // demo: upiLink is plain text
   | { t: "DB:Status"; orderId: string; state: OrderState; by: string; note: string | null; at: string }
   | { t: "DB:Desk"; orderId: string; orderNo: number; buyer: string; item: string; variantLabel: string; amountPaise: number; assignedTo: string | null; state: OrderState; event: "new" | "payment_claimed" | "paid" | "shipped" | "cancelled" | "assigned" };
 

@@ -2,7 +2,7 @@
 // /seller/dashboard: per-drop results, straight from GET /api/drops/:id/dashboard. Nothing estimated: null = not measured.
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Button, Card, EmptyState, Field, LinkButton, Select, Skeleton, StatePill } from "@/components/ui";
+import { Button, buttonClasses, Card, cx, EmptyState, Field, Icon, LinkButton, Select, Skeleton, StatePill } from "@/components/ui";
 import { api } from "@/lib/client/api";
 import { rupees, tapTime } from "@/lib/codec";
 import type { DropDashboard, DropSummary } from "@/lib/types";
@@ -36,11 +36,15 @@ export function Dashboard() {
   return (
     <div className="flex flex-col gap-5">
       <h1 className="text-3xl">Results</h1>
-      <Field label="Drop" className="max-w-md">
-        <Select name="drop" value={dropId ?? ""} onChange={(e) => router.replace(`/seller/dashboard?drop=${e.target.value}`)}>
-          {drops.map((x) => <option key={x.dropId} value={x.dropId}>{x.title} · {when(x.startsAt)}</option>)}
-        </Select>
-      </Field>
+      <div className="flex flex-wrap items-end gap-2">
+        <Field label="Drop" className="min-w-0 max-w-md flex-1 basis-56">
+          <Select name="drop" value={dropId ?? ""} onChange={(e) => router.replace(`/seller/dashboard?drop=${e.target.value}`)}>
+            {drops.map((x) => <option key={x.dropId} value={x.dropId}>{x.title} · {when(x.startsAt)}</option>)}
+          </Select>
+        </Field>
+        {dropId && <a href={`/api/exports/orders.csv?dropId=${dropId}`} download className={buttonClasses("ghost")} data-testid="csv-download">
+          <Icon name="arrowRight" size={20} className="rotate-90" />Download orders (CSV)</a>}
+      </div>
       {drop && (
         <p className="flex flex-wrap items-center gap-2">
           <StatePill size="sm" state={DROP_PILL[drop.status].state} label={DROP_PILL[drop.status].label} />
@@ -58,14 +62,14 @@ export function Dashboard() {
             <Tile label="Paid value" value={rupees(cur.paidValuePaise)} testid="dash-value" />
             <Tile label="Waitlist saves" value={String(cur.waitlistSaves)} hint="Sold to a promoted buyer" testid="dash-saves" />
             <Tile label="Median winning tap" value={cur.medianWinMs == null ? "not measured yet" : tapTime(cur.medianWinMs)} hint="From the piece going live to the tap that won it" testid="dash-median" />
-            <Tile label="Viewers" value={cur.viewers == null ? "not measured" : String(cur.viewers)} testid="dash-viewers" />
+            {cur.viewers != null && <Tile label="Viewers" value={String(cur.viewers)} testid="dash-viewers" />}
           </dl>
           <Card flat className="flex flex-col gap-3">
             <h2 className="text-xl">From tap to paid</h2>
             {[["Taps", cur.taps], ["Holds", cur.holds], ["Paid", cur.paidOrders]].map(([label, n]) => (
               <div key={label} className="grid grid-cols-[4.5rem_minmax(0,1fr)_3rem] items-center gap-2">
                 <span className="font-semibold">{label}</span>
-                <span className="h-6 rounded-wobble border-2 border-ink bg-lime" style={{ width: `${Math.max(2, (Number(n) / max) * 100)}%` }} aria-hidden="true" />
+                <span className={cx("h-6 rounded-wobble", Number(n) ? "border-2 border-ink bg-lime" : "border-l-2 border-ink")} style={{ width: Number(n) ? `${Math.max(2, (Number(n) / max) * 100)}%` : 0 }} aria-hidden="true" />
                 <span className="text-right font-mono">{n}</span>
               </div>
             ))}

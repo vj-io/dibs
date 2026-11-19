@@ -49,7 +49,7 @@ export function Footer({ className }: { className?: string }) {
       </div>
       <div className="mx-auto max-w-6xl px-4 pb-8">
         <Squiggle className="mb-4 h-2.5 w-40 text-ink/30" draw={false} />
-        <p className="text-[0.95rem] text-muted">Built by Team Kaching for the Nexconn Build Challenge 2026.</p>
+        <p className="text-[0.95rem] text-muted">Built by Team Kaching (Vaibhav Jangid) for the Nexconn Build Challenge 2026.</p>
         <p className="text-[0.95rem] text-muted">Built on Nexconn: the sale rooms, order chats and team desk are live Nexconn channels.</p>
       </div>
     </footer>

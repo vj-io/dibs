@@ -43,15 +43,15 @@ const toInput = (f: F): Omit<ShopInput, "name" | "slug"> => ({
   faq: f.faq.map((l) => l.trim()).filter(Boolean),
 });
 
-export function ShopForm({ initial, readOnly, onCreated, onSaved }: {
+export function ShopForm({ initial, readOnly, onCreated, onSaved, ownerName }: {
   /** Absent = create a new shop. */
-  initial?: ShopSettings; readOnly?: boolean;
+  initial?: ShopSettings; readOnly?: boolean; ownerName?: string;
   onCreated?: (me: SellerMe) => void; onSaved?: (s: ShopSettings) => void;
 }) {
   const create = !initial;
   const toast = useToast();
   const [f, setF] = useState<F>(() => ({
-    name: initial?.name ?? "", slug: initial?.slug ?? "", ownerName: "",
+    name: initial?.name ?? "", slug: initial?.slug ?? "", ownerName: ownerName ?? "",
     upiId: initial?.upiId ?? "", payeeName: initial?.payeeName ?? "", supportWhatsapp: initial?.supportWhatsapp ?? "",
     holdMinutes: String(initial?.holdMinutes ?? 10), maxHolds: String(initial?.maxHolds ?? 3),
     highValue: initial?.highValuePaise ? String(initial.highValuePaise / 100) : "", autoAdvance: initial?.autoAdvance ?? false,

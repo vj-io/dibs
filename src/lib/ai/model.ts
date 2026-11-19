@@ -65,6 +65,7 @@ export async function generateJson<T>(
       }
     }
   } catch { /* out stays null */ }
-  record({ job, model: used, ms: Date.now() - t0, ok });
+  // no model was tried (no key, or every model resting after a rate limit): a rules-only decision, not a failed AI call
+  if (used !== "none") record({ job, model: used, ms: Date.now() - t0, ok });
   return out;
 }

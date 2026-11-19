@@ -24,9 +24,9 @@ No sign-up, no second device.
 
 1. Open `/try` and tap **Be a buyer**.
 2. You join a demo sale room with 40 🤖 demo buyers. A banner says so: "Demo room · 40 🤖 demo buyers · nothing here is real money".
-3. Five seconds in, piece 1 goes live. About ten bots tap 0.08 to 0.4 seconds after it goes live. Tap **Dibs!** yourself. You will almost certainly land on the waitlist: "You're #3 on the waitlist." In a manual run on production with real Nexconn, the waitlist promotion and the opening of the order room came about 30 to 40 seconds after the tap.
-4. Bots never pay. Each bot hold runs out after 20 seconds, and the next buyer in line is promoted. When it is your turn you see "It's yours! The buyer ahead didn't pay" and an order chat opens.
-5. In the order chat you see the order card and a payment card with a demo UPI ID. Tap **I've paid**. Asha, a labelled demo staff member, confirms; in a manual run on production "Paid · confirmed by Asha (demo staff)" showed about 5 seconds after the tap. You get 90 seconds to pay in the demo; bots get 20 (these timings are also disclosed on `/try` and `/how-it-works`).
+3. Five seconds after the room opens on your screen, piece 1 goes live. About ten bots tap 0.08 to 0.4 seconds after it goes live. Tap **Dibs!** yourself. You will almost certainly land on the waitlist: "You're #3 on the waitlist." The waitlist promotion and the order room come about 25 seconds after the tap (about 34 seconds from the click), measured over 25 simulated judges on this build (22 to 27 s) with 12-second bot holds. With the earlier 20-second bot holds a production check measured about 40 seconds after the tap (about 50 from the click).
+4. Bots never pay. Each bot hold runs out after 12 seconds, and the next buyer in line is promoted. When it is your turn you see "It's yours! The buyer ahead didn't pay" and an order chat opens.
+5. In the order chat you see the order card and a payment card with a demo UPI ID. Tap **I've paid**. Asha, a labelled demo staff member, confirms; in a manual run on production "Paid · confirmed by Asha (demo staff)" showed about 5 seconds after the tap. You get 90 seconds to pay in the demo; bots get 12 (these timings are also disclosed on `/try` and `/how-it-works`).
 6. Piece 2 goes live only after you are back in the room. Bots wait 1.5 to 3 seconds this time, so a quick tap wins outright. The room ticker shows "Sold to You" with your time.
 7. The demo room closes after 3 minutes with a "That's Dibs" card and links to the seller view.
 
@@ -110,7 +110,7 @@ Statuses come from `docs/NEXCONN_FINDINGS.md` (proof of concept run live against
 
 Also found live: unregistered custom message types are dropped silently, so the client registers every `DB:*` type before connecting. Any message a buyer pastes in the `[[DB:Sold]]{...}` shape stays plain text. Open-channel history needs cloud retention (error 23414), which is off; join history comes with `enterChannel`, and state comes from `GET /api/drops/:id/state`.
 
-Console settings already on for this app: open-channel metadata service, open-channel message priority, group read receipts. Still to do in the Console: the webhook URL with `message:send`, and the pre-message callback if the plan offers it.
+Console settings on for this app: open-channel metadata service, open-channel message priority, group read receipts, and the webhook URL with `message:send` (proven live, see the table above). The pre-message callback is not offered on this plan.
 
 ## AI helpers, and what AI never does
 
@@ -150,10 +150,10 @@ Stack: Next.js 16 (App Router), TypeScript, Tailwind v4, Supabase Postgres (engi
 
 - Bots exist only in demo drops (`is_sandbox = true`). There are 40 (`demo_bot_01` to `demo_bot_40`). They are labelled 🤖 and "demo" everywhere, and a banner says so on every demo screen.
 - Bots tap through the same `claim_dibs` function as real buyers and win or lose honestly. Only their delays are scripted.
-- In the buyer demo, bots never pay. Their holds always expire after 20 seconds. That is how a judge sees a promotion. In the seller demo, a few bots tap "I've paid" with a demo UTR so the judge has orders to confirm.
+- In the buyer demo, bots never pay. Their holds always expire after 12 seconds in the demo (a real shop's hold is set by the seller, 10 minutes by default). That is how a judge sees a promotion. In the seller demo, a few bots tap "I've paid" with a demo UTR so the judge has orders to confirm.
 - Bots cannot claim in real drops (a test checks this). Demo data is excluded from `/impact` and the dashboard totals (a test checks this).
 - Demo drops come from a pool of 16 reusable open channels, to stay under Nexconn's open-channel limit. A room in use is never recycled; when all are busy the page waits and retries.
-- Each visitor gets fresh demo staff. Demo shops are read-only (settings and products) for visitors. A human gets 90 seconds to pay and bots get 20; piece 2 goes live only after the visitor is back in the room. These timings are disclosed on `/try` and `/how-it-works`.
+- Each visitor gets fresh demo staff. Demo shops are read-only (settings and products) for visitors. A human gets 90 seconds to pay and bots get 12; piece 2 goes live only after the visitor is back in the room. These timings are disclosed on `/try` and `/how-it-works`.
 
 ## Tests
 

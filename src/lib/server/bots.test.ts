@@ -31,27 +31,27 @@ test("seller: 3 fast taps, 5 more over 1-6 s", () => {
   assert.equal(t.filter((x) => x.ms >= 1000 && x.ms <= 6000).length, 5);
 });
 
-test("servedAt chains 20 s holds", () => {
-  assert.equal(servedAt([20_000], 0), 20_000);
-  assert.equal(servedAt([20_000], 2), 60_000);
-  assert.equal(servedAt([20_000, 20_300], 2), 40_000);
+test("servedAt chains 12 s bot holds", () => {
+  assert.equal(servedAt([12_000], 0), 12_000);
+  assert.equal(servedAt([12_000], 2), 36_000);
+  assert.equal(servedAt([12_000, 12_300], 2), 24_000);
   assert.equal(servedAt([], 0), Infinity);
 });
 
-test("chooseKeep: judge promoted within 43 s of the tap, as many bots ahead as allowed", () => {
-  // tap at +6 s after live, one unit (hold ends at 20.1 s), 2 bots ahead: keep 1 -> promoted at 40.1 s
-  assert.equal(chooseKeep([20_100], 2, 6000), 1);
-  // two units: both bots ahead can stay -> promoted at 40.1 s
-  assert.equal(chooseKeep([20_100, 20_300], 2, 6000), 2);
+test("chooseKeep: judge promoted within 30 s of the tap, as many bots ahead as allowed", () => {
+  // tap 1 s after live, one unit (bot hold ends at 12.1 s), 2 bots ahead: keep 1 -> promoted at 24.1 s
+  assert.equal(chooseKeep([12_100], 2, 1000), 1);
+  // two units: both bots ahead can stay -> promoted at 24.1 s
+  assert.equal(chooseKeep([12_100, 12_300], 2, 1000), 2);
   // late tap (after the first promotion): nobody needs to leave
-  assert.equal(chooseKeep([40_100], 1, 26_000), 1);
+  assert.equal(chooseKeep([24_100], 1, 14_000), 1);
   // holds that end too late: all leave
   assert.equal(chooseKeep([60_000], 3, 0), 0);
   for (let tap = 1000; tap <= 10_000; tap += 500)
-    for (const ends of [[20_100], [20_100, 20_400]]) {
+    for (const ends of [[12_100], [12_100, 12_400]]) {
       const k = chooseKeep(ends, 2, tap);
       const at = servedAt(ends, k);
-      assert.ok(at - tap <= 43_000 && at - tap >= 20_000, `tap ${tap} ends ${ends}: ${at - tap}`);
+      assert.ok(at - tap <= 30_000 && at - tap >= 10_000, `tap ${tap} ends ${ends}: ${at - tap}`);
     }
 });
 

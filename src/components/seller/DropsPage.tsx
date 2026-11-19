@@ -6,7 +6,8 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Button, Card, EmptyState, Field, Icon, Input, LinkButton, Price, Sheet, Skeleton, StatePill, type PillState } from "@/components/ui";
 import { api } from "@/lib/client/api";
 import type { DropStatus, DropSummary, Product } from "@/lib/types";
-import { errMsg, ShareCard, when } from "./kit";
+import { errMsg, useMe, when } from "./kit";
+import { ShareKit } from "./ShareKit";
 
 export const DROP_PILL: Record<DropStatus, { state: PillState; label: string }> = {
   scheduled: { state: "waiting", label: "Scheduled" },
@@ -28,7 +29,8 @@ export function DropsPage() {
   const [shown, setShown] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
-  const [made, setMade] = useState<{ dropId: string; title: string; shareUrl: string } | null>(null);
+  const [made, setMade] = useState<{ dropId: string; title: string; startsAt: string; shareUrl: string } | null>(null);
+  const shopName = useMe().shop.name;
 
   const load = useCallback(() => Promise.all([api("GET /api/drops"), api("GET /api/products")])
     .then(([d, p]) => { setDrops(d.drops); setProducts(p.products); }, (e) => setErr(errMsg(e))), []);
@@ -47,8 +49,9 @@ export function DropsPage() {
     if (errors.title || errors.startsAt || errors.picked) return;
     setBusy(true); setSaveErr(null);
     try {
-      const r = await api("POST /api/drops", { title: title.trim(), startsAt: new Date(startsAt).toISOString(), productIds: picked });
-      setMade({ dropId: r.dropId, title: title.trim(), shareUrl: r.shareUrl });
+      const iso = new Date(startsAt).toISOString();
+      const r = await api("POST /api/drops", { title: title.trim(), startsAt: iso, productIds: picked });
+      setMade({ dropId: r.dropId, title: title.trim(), startsAt: iso, shareUrl: r.shareUrl });
       setCreating(false);
       await load();
     } catch (x) { setSaveErr(errMsg(x)); } finally { setBusy(false); }
@@ -67,7 +70,7 @@ export function DropsPage() {
       {made && (
         <Sheet tint="lime" title="Your drop is ready to share" className="flex flex-col gap-3">
           <p className="text-lg font-semibold">{made.title}</p>
-          <ShareCard title={made.title} url={made.shareUrl} />
+          <ShareKit shopName={shopName} title={made.title} startsAt={made.startsAt} url={made.shareUrl} />
           <LinkButton href={`/seller/drops/${made.dropId}`} icon="live" size="lg" className="self-start">Open the live console</LinkButton>
         </Sheet>
       )}

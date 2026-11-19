@@ -3,6 +3,7 @@
 import { randomInt } from "node:crypto";
 import { z } from "zod";
 import { afterWrite } from "@/lib/server/after";
+import { announceDrop } from "@/lib/server/club";
 import { sql } from "@/lib/server/db";
 import { body, fail, json, route } from "@/lib/server/http";
 import { activeStaff, shareUrl } from "@/lib/server/queries";
@@ -60,6 +61,7 @@ export const POST = route("POST /api/drops", async (req: Request) => {
         return d.id;
       });
       await afterWrite(dropId);
+      await announceDrop(dropId); // shop club #drops (never throws; no-op when the club flag is off)
       return json({ dropId, code, shareUrl: shareUrl(shop.slug, code) });
     } catch (e) {
       if ((e as { code?: string })?.code !== "23505" || attempt >= 4) throw e; // code collision: draw again

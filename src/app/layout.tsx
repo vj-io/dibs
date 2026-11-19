@@ -10,6 +10,7 @@ const jetbrains = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "700"], v
 const pitch = "First tap wins. Everyone sees it. Nobody gets lost in the DMs.";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.APP_URL ?? "http://localhost:3000"),
   title: { default: "Dibs — First tap wins", template: "%s · Dibs" },
   description: `${pitch} A live sale room for sellers who drop jewellery and fashion on WhatsApp and Instagram.`,
   applicationName: "Dibs",

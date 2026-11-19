@@ -119,7 +119,7 @@ All in schema `public`. Each returns `jsonb`. Each state change writes claim/ord
 
 Staff permission (the staff member is active and belongs to the drop's shop) is checked **inside** the functions that take `p_staff`; error `forbidden`.
 
-Sandbox: `shops.is_sandbox` / `drops.is_sandbox`; sandbox shops use `hold_seconds = 20`.
+Sandbox: `shops.is_sandbox` / `drops.is_sandbox`; sandbox shops use `hold_seconds = 20`; in a judge-mode drop `_hold_secs` gives bots 12 s and humans 90 s (0006, 0009).
 
 Assignment on a won claim (inside the engine): amount ≥ `shops.high_value_paise` (when set) ⇒ owner; else round-robin over active staff: fewest open orders, ties by oldest `staff.last_assigned_at`.
 

@@ -7,6 +7,7 @@ import * as jobs from "../ai/jobs.ts";
 import { setAiRecorder } from "../ai/model.ts";
 import { scamRules } from "../ai/scam-shield.ts";
 import { ASSISTANT_ID, BOT_ID, type Card } from "../codec.ts";
+import { screenClubText } from "./club.ts";
 import { sql } from "./db.ts";
 import { flags } from "./flags.ts";
 import { bus } from "./mockbus.ts";
@@ -163,6 +164,16 @@ export function roomTexts(body: Hook): RoomText[] {
   return res;
 }
 
+const isCommunity = (t: unknown) => t === 10 || t === "10" || (typeof t === "string" && /communit/i.test(t));
+
+/** Shop-club texts (community channel, RC:TxtMsg, with their subchannel) in a message:send webhook body. */
+export function clubTexts(body: Hook): (RoomText & { sub: string })[] {
+  if (body?.type !== "message:send" || !Array.isArray(body.data)) return [];
+  const club = (body.data as Record<string, unknown>[]).filter((d) => d && isCommunity(d.channelType) && typeof d.subchannelId === "string");
+  const texts = roomTexts({ type: body.type, data: club.map((d) => ({ ...d, channelType: 4 })) }); // same text parsing as the room
+  return texts.map((t) => ({ ...t, sub: String(club.find((d) => d.messageId === t.messageId)?.subchannelId) }));
+}
+
 type Creds = { appKey: string; appSecret: string };
 export type WebhookOpts = { defer?: (job: () => Promise<unknown>) => void; deps?: TextDeps; creds?: Creds; now?: number };
 
@@ -177,6 +188,7 @@ export async function handleWebhook(req: Request, o: WebhookOpts = {}): Promise<
   const msgs = roomTexts(body);
   const defer = o.defer ?? ((job) => { void job(); });
   for (const m of msgs) defer(() => handleRoomText(m, o.deps).catch((e) => console.error("[webhook]", e instanceof Error ? e.message : e)));
+  for (const m of clubTexts(body)) defer(() => screenClubText(m).catch((e) => console.error("[webhook] club", e instanceof Error ? e.message : e)));
   return Response.json({ ok: true, accepted: msgs.length });
 }
 

@@ -1,8 +1,10 @@
-// Owner invites staff by email: a pending (inactive) staff row that activates when that email signs in.
+// Owner invites staff by email: a pending (inactive) staff row. It activates when that email signs in with an emailed
+// code, or through the returned invite link (7 days, works without any email being sent).
 import { z } from "zod";
 import { sql } from "@/lib/server/db";
 import { body, fail, json, route, uuidParam } from "@/lib/server/http";
 import { requireOwner } from "@/lib/server/queries";
+import { inviteUrl } from "@/app/api/seller/_signin";
 import type { StaffMember } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -21,5 +23,5 @@ export const POST = route("POST /api/shops/:id/staff", async (req: Request, ctx:
   if (n.n >= 20) fail(409, "team_full", "A shop can have up to 20 team members.");
   const [r] = await sql<{ id: string }[]>`
     insert into staff (shop_id, role, display_name, email, active) values (${id}, 'staff', ${b.name}, ${email}, false) returning id`;
-  return json({ member: { staffId: r.id, role: "staff", displayName: b.name, email, status: "pending" } satisfies StaffMember });
+  return json({ member: { staffId: r.id, role: "staff", displayName: b.name, email, status: "pending" } satisfies StaffMember, inviteUrl: await inviteUrl(r.id, email) });
 });

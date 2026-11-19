@@ -15,10 +15,10 @@ export type Slot = { slot: number; dropId: string; role: "buyer" | "seller"; jud
 type Bot = { id: string; uid: string; name: string };
 type Item = { id: string; position: number; variants: { key: string; qty: number }[]; has_more: boolean };
 
-/** The buyer script's clock (ms after /try/start unless noted). Sandbox holds last 20 s. */
+/** The buyer script's clock (ms after /try/start unless noted). In a demo drop bot holds last 12 s, a human's 90 s (0009). */
 export const SCRIPT = {
-  holdMs: 20_000, firstLiveMs: 5000, fallbackNextMs: 85_000, endMs: 180_000, pieceGapMs: 25_000,
-  confirmMs: 3000, roomNextMs: 3000, confirmFallbackMs: 33_000, scamMs: 30_000, chatEveryMs: 3000, promoteWithinMs: 43_000,
+  holdMs: 12_000, firstLiveMs: 5000, firstLiveFallbackMs: 12_000, fallbackNextMs: 85_000, endMs: 180_000, pieceGapMs: 25_000,
+  confirmMs: 3000, roomNextMs: 3000, confirmFallbackMs: 33_000, scamMs: 30_000, chatEveryMs: 3000, promoteWithinMs: 30_000,
 } as const;
 
 const LINES = [
@@ -146,14 +146,16 @@ export async function scheduleStart(slot: Slot) {
   const b = await bots();
   const rows: Planned[] = slot.role === "buyer"
     ? [
-        { ms: SCRIPT.firstLiveMs, action: "next", payload: { ifPosition: 0 } },
+        // piece 1 goes live 5 s after the judge's screen is in the room (roomTick); this is the fallback
+        { ms: SCRIPT.firstLiveFallbackMs, action: "next", payload: { ifPosition: 0 } },
         { ms: SCRIPT.fallbackNextMs, action: "next", payload: { ifPosition: 1 } }, // piece 2 even if the judge never pays
         { ms: SCRIPT.endMs, action: "end", payload: {} },
         scamChat(b, SCRIPT.scamMs),
-        ...chatPlan(b, 2000, SCRIPT.endMs - 2000),
+        ...chatPlan(b, 500, SCRIPT.endMs - 2000),
       ]
-    : chatPlan(b, 2000, 120_000);
+    : chatPlan(b, 500, SCRIPT.endMs); // seller: the 40 bots are already talking when the console opens; nothing drops yet
   await schedule(slot.dropId, rows);
+  if (slot.role === "buyer") await sql`select sandbox_set_start(${slot.dropId}, ${SCRIPT.firstLiveFallbackMs})`; // countdown to the fallback
 }
 
 /** Seller script: the judge pressed Drop next (or Reopen). Buyer-script pieces are planned by the scripted "next". */
@@ -190,6 +192,8 @@ export async function onPaidClaim(slot: Slot, orderId: string) {
 export async function roomTick(dropId: string) {
   const slot = await slotOf(dropId);
   if (!slot || slot.role !== "buyer") return;
+  // first time in the room: piece 1 in 5 s, so the judge sees the countdown, the drop and the bots' taps (once)
+  await sql`select sandbox_first_room(${dropId}, ${SCRIPT.firstLiveMs})`;
   await sql`
     insert into bot_schedule (drop_id, due_at, action, payload)
     select ${dropId}, clock_timestamp() + make_interval(secs => ${SCRIPT.roomNextMs / 1000}), 'next', ${sql.json({ ifPosition: 1, afterRoom: true })}
@@ -241,21 +245,26 @@ async function next(slot: Slot, ifPosition: number | null) {
   await sql`select sandbox_next(${slot.dropId}, ${slot.ownerId}, ${ifPosition}, ${it?.id ?? null}, ${sql.json(plan as never)})`;
 }
 
+/** All due bot taps in one engine call, in due order (one round trip, so "80-400 ms" stays true over HTTP RPC). */
+async function taps(slot: Slot, rows: Row[]) {
+  const res = await fn<{ result: string; orderId: string | null; buyerId: string }[]>("sandbox_taps",
+    JSON.stringify(rows.map((r) => ({ itemId: r.payload.itemId, variant: r.payload.variant, buyerId: r.payload.buyerId }))));
+  if (slot.role !== "seller") return;
+  for (const w of res.filter((x) => x.result === "won" && x.orderId)) {
+    // seller script: the first two bot winners say they paid (with a visibly fake UTR, DEMO-UTR-0001 / 0002),
+    // so the judge has orders to confirm and ship
+    await sql`
+      insert into bot_schedule (drop_id, due_at, action, payload)
+      select ${slot.dropId}, clock_timestamp() + make_interval(secs => ${rnd(5000, 8000) / 1000}), 'paid_claim',
+             jsonb_build_object('orderId', ${w.orderId}::text, 'buyerId', ${w.buyerId}::text, 'utr', 'DEMO-UTR-000' || (n + 1))
+        from (select count(*)::int as n from bot_schedule where drop_id = ${slot.dropId} and action = 'paid_claim') c
+       where n < 2`;
+  }
+}
+
 async function exec(slot: Slot, r: Row) {
   const p = r.payload;
   switch (r.action) {
-    case "tap": {
-      const res = await fn<{ result: string; orderId: string | null }>("claim_dibs", String(p.itemId), String(p.variant), String(p.buyerId), new Date());
-      if (slot.role === "seller" && res.result === "won" && res.orderId) {
-        // seller script: the first two bot winners say they paid, so the judge has orders to confirm and ship
-        await sql`
-          insert into bot_schedule (drop_id, due_at, action, payload)
-          select ${slot.dropId}, clock_timestamp() + make_interval(secs => ${rnd(5000, 8000) / 1000}), 'paid_claim',
-                 ${sql.json({ orderId: res.orderId, buyerId: p.buyerId, utr: "4" + String(randomInt(1e10, 1e11)) })}
-           where (select count(*) from bot_schedule where drop_id = ${slot.dropId} and action = 'paid_claim') < 2`;
-      }
-      return;
-    }
     case "chat": return botChat(slot, r);
     case "leave": await fn("leave_waitlist", String(p.claimId), String(p.buyerId)); return;
     case "paid_claim": await fn("order_paid_claim", String(p.orderId), String(p.buyerId), String(p.utr)); return;
@@ -270,22 +279,19 @@ export type DueResult = { executed: number; nextDueMs: number | null; status: st
 
 /** Claims every due row of this drop (each runs once, whoever claims it) and runs them in parallel. */
 export async function runDue(slot: Slot): Promise<DueResult> {
-  const rows = await sql`
-    with due as (
-      select id from bot_schedule where drop_id = ${slot.dropId} and done_at is null and due_at <= clock_timestamp()
-       order by due_at, id for update skip locked
-    ), c as (
-      update bot_schedule b set done_at = clock_timestamp() from due where b.id = due.id returning b.id, b.action, b.payload
-    )
-    select 'row' as k, c.id::text as id, c.action, c.payload, null::float8 as ms, null::text as status from c
-    union all
-    select 'meta', null, null, null,
-      (select extract(epoch from (min(due_at) - clock_timestamp())) * 1000 from bot_schedule
-        where drop_id = ${slot.dropId} and done_at is null and id not in (select id from due))::float8,
-      (select status from drops where id = ${slot.dropId})`;
-  const due = rows.filter((r) => r.k === "row") as unknown as Row[];
-  const meta = rows.find((r) => r.k === "meta")!;
-  await Promise.all(due.map((r) => exec(slot, r).catch((e) => console.error("[bots]", r.action, e instanceof Error ? e.message : e))));
+  const r = await fn<{ rows: Row[]; ms: number | null; status: string | null }>("sandbox_due", slot.dropId);
+  const due = r.rows;
+  const meta = { ms: r.ms, status: r.status };
+  const log = (what: string) => (e: unknown) => console.error("[bots]", what, e instanceof Error ? e.message : e);
+  const tapRows = due.filter((r) => r.action === "tap"); // already in due order
+  const all = Promise.all([
+    ...(tapRows.length ? [taps(slot, tapRows).catch(log("tap"))] : []),
+    ...due.filter((r) => r.action !== "tap").map((r) => exec(slot, r).catch(log(r.action))),
+  ]);
+  // one slow or stuck call (a queued RPC, a pooler hiccup) must not freeze the script: wait at most 1 s, the rest
+  // finishes in the background (each row is already claimed, so it still runs exactly once)
+  background(all);
+  await Promise.race([all, sleep(1000)]);
   return { executed: due.length, nextDueMs: meta.ms === null ? null : Math.max(0, Number(meta.ms)), status: meta.status };
 }
 
@@ -321,19 +327,9 @@ let draining: Promise<unknown> | null = null, again = false;
 /** Drains in the background so a slow Server API call never delays a scheduled tap. */
 function kickDrain() {
   if (draining) { again = true; return; }
-  draining = (async () => { do { again = false; await drainOutbox({ budgetMs: 5000 }); } while (again); })().finally(() => { draining = null; });
-}
-
-/** One pass: due actions, sweep, judge plan, drain. The client's 1 s safety net (POST /api/try/tick). */
-export async function tick(dropId: string): Promise<DueResult | null> {
-  const slot = await slotOf(dropId);
-  if (!slot) return null;
-  const r = await runDue(slot);
-  await fn("sweep_drop", dropId);
-  await fn("sandbox_extend_holds", dropId); // demo: humans get 90 s to pay, bots 20
-  await planJudge(slot);
-  await drainOutbox({ budgetMs: 3000 });
-  return r;
+  const run = (async () => { do { again = false; await drainOutbox({ budgetMs: 5000 }); } while (again); })();
+  // a drain stuck on one call must not stop this instance from draining again (the lease lets another drain pick up)
+  draining = Promise.race([run, sleep(15_000)]).finally(() => { draining = null; });
 }
 
 /**
@@ -349,32 +345,45 @@ export async function runLoop(dropId: string, budgetMs = 120_000): Promise<boole
      where drop_id = ${dropId} and (runner_until is null or runner_until < clock_timestamp()) returning slot`;
   if (!got.length) return false;
   const end = Date.now() + budgetMs;
-  let lastFull = 0, lastRenew = Date.now();
+  let lastFull = 0, lastRenew = Date.now(), errors = 0, fullRunning = false;
   try {
     while (Date.now() < end) {
-      const r = await runDue(slot);
-      if (r.status === null || (r.status === "ended" && r.nextDueMs === null)) break;
-      if (r.executed) kickDrain();
-      // what just ran may have scheduled more (a "next" plans its taps): re-read at once, the sweep can wait a moment
-      if (r.executed && Date.now() - lastFull < 3000) continue;
-      if (Date.now() - lastFull >= 1000) {
-        lastFull = Date.now();
-        await fn("sweep_drop", dropId);
-        await fn("sandbox_extend_holds", dropId); // demo: humans get 90 s to pay, bots 20
-        await planJudge(slot);
-        kickDrain();
+      try {
+        const it0 = Date.now();
+        const r = await runDue(slot);
+        const dueRead = Date.now();
+        if (dueRead - it0 > 3000) console.warn(JSON.stringify({ bots: "slow_runDue", dropId, ms: dueRead - it0 }));
+        if (r.status === null || (r.status === "ended" && r.nextDueMs === null)) break;
+        if (r.executed) kickDrain();
+        // what just ran may have scheduled more (a "next" plans its taps): re-read at once, the sweep can wait a moment
+        if (r.executed && Date.now() - lastFull < 3000) { errors = 0; continue; }
+        if (Date.now() - lastFull >= 1000 && !fullRunning) {
+          lastFull = Date.now();
+          // bounded like runDue: a slow sweep finishes in the background instead of stopping the script, and no
+          // second one starts until it has (piling sweeps up is what made a slow database slower)
+          fullRunning = true;
+          const full = (async () => { await fn("sweep_drop", dropId); await planJudge(slot); })().finally(() => { fullRunning = false; });
+          background(full);
+          await Promise.race([full, sleep(1500)]);
+          kickDrain();
+        }
+        if (Date.now() - lastRenew >= 5000) {
+          lastRenew = Date.now();
+          const ok = await sql`update try_slots set runner_until = clock_timestamp() + interval '15 seconds' where drop_id = ${dropId} and runner_token = ${token} returning 1`;
+          if (!ok.length) break;
+        }
+        errors = 0;
+        if (r.executed) continue;
+        // nextDueMs was read before the sweep above: count the time that took, or every action runs late by it
+        const wait = Math.min((r.nextDueMs ?? 1000) - (Date.now() - dueRead), 1000 - (Date.now() - lastFull));
+        if (wait > 0) await sleep(wait);
+      } catch (e) {
+        // a passing database or network error (seen: PostgREST 503) must not end the demo: wait a moment and go on
+        console.error("[bots] loop", e instanceof Error ? e.message : e);
+        if (++errors >= 20) break;
+        await sleep(500);
       }
-      if (Date.now() - lastRenew >= 5000) {
-        lastRenew = Date.now();
-        const ok = await sql`update try_slots set runner_until = clock_timestamp() + interval '15 seconds' where drop_id = ${dropId} and runner_token = ${token} returning 1`;
-        if (!ok.length) break;
-      }
-      if (r.executed) continue;
-      const wait = Math.min(r.nextDueMs ?? 1000, 1000 - (Date.now() - lastFull));
-      if (wait > 0) await sleep(wait);
     }
-  } catch (e) {
-    console.error("[bots] loop", e instanceof Error ? e.message : e);
   } finally {
     await sql`update try_slots set runner_until = null, runner_token = null where runner_token = ${token}`.catch(() => {});
     await Promise.allSettled([draining, settleBackground()]);

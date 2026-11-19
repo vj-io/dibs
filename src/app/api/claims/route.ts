@@ -39,5 +39,7 @@ export const POST = route("POST /api/claims", async (req: Request) => {
   if (r.notFound) notFound();
   // the buyer gets the result at once; the drain starts the moment the response is sent (same instance, waitUntil)
   if (r.swept || r.claim.result === "won" || r.claim.result === "waitlisted") after(() => afterWrite(r.dropId));
-  return json({ ...r.claim, message: message(r.claim, { hold_seconds: r.holdSeconds, max_holds: r.maxHolds }) } satisfies ClaimResult);
+  const res: ClaimResult = { ...r.claim, message: message(r.claim, { hold_seconds: r.holdSeconds, max_holds: r.maxHolds }) };
+  // serverMs: request arrival to response on this instance (the load simulation splits network from server time with it)
+  return json({ ...res, serverMs: Date.now() - receivedAt.getTime() });
 });

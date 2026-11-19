@@ -80,7 +80,11 @@ export async function rpc<T>(name: string, params: Record<string, unknown>): Pro
         signal: AbortSignal.timeout(20_000),
         cache: "no-store",
       });
-    } catch (e) { last = e; continue; }
+    } catch (e) {
+      // our own 20 s timeout: the database is saturated, and a retry would only lengthen the queue (docs/perf.md)
+      if (e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError")) throw new Error(`rpc ${name}: timed out`);
+      last = e; continue;
+    }
     if (res.status === 502 || res.status === 503 || res.status === 504) { last = new Error(`rpc ${name}: HTTP ${res.status}`); continue; }
     if (!res.ok) {
       const err = (await res.json().catch(() => ({}))) as { code?: string; message?: string };

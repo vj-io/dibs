@@ -69,6 +69,9 @@ export async function execute(row: OutboxRow, s: Sender): Promise<void> {
     case "SYS:Mute": return s.mute(p.channelId, p.userId, p.minutes);
     case "SYS:Ban": return s.ban(p.channelId, p.userId, p.minutes);
     case "SYS:Unban": return s.unban(p.channelId, p.userId);
+    // shop club (community channel): executed by club.ts; mock bus unless this drain talks to Nexconn
+    case "SYS:EnsureClub": case "SYS:JoinClub": case "SYS:LeaveClub": case "SYS:ClubSend":
+      return (await import("./club.ts")).execClub(row.msg_type, p, s === nexconnSender);
   }
   if (!row.msg_type.startsWith("DB:")) throw new PermanentError(`unknown msg_type ${row.msg_type}`);
   const card = { ...(row.payload as object), t: row.msg_type } as Card;
@@ -145,10 +148,19 @@ async function settleAll(xs: Settled[]) {
      where o.id = x.id`;
 }
 
+/**
+ * A DB:Stock card followed directly by a newer DB:Stock card for the same item says nothing the newer one does not
+ * (each carries the whole item's stock): it is settled as sent without sending. A burst of N waitlist joins leaves N
+ * stock rows in a row; this sends one card (and one metadata write) per leased run instead of N.
+ */
+export const superseded = (rows: OutboxRow[], i: number) =>
+  rows[i].msg_type === "DB:Stock" && rows[i + 1]?.msg_type === "DB:Stock" && rows[i + 1].payload.itemId === rows[i].payload.itemId;
+
 /** Sends one channel's leased rows in id order. A row that must be retried stops the channel; the rest are released. */
 async function sendChannel(rows: OutboxRow[], s: Sender): Promise<Settled[]> {
   const out: Settled[] = [];
   for (const [i, r] of rows.entries()) {
+    if (superseded(rows, i)) { out.push(outcome(r, null)); continue; }
     let err: unknown = null;
     try { await execute(r, s); } catch (e) { err = e ?? new Error("failed"); }
     const o = outcome(r, err);

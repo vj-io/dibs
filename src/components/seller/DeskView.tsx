@@ -3,12 +3,13 @@
 // sheet on phones), and the team desk chat feed. Polls GET /api/desk every 10 s and on any desk card.
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { OrderRoom } from "@/components/order/OrderRoom";
-import { Badge, BottomSheet, Button, Card, Countdown, cx, EmptyState, Icon, Input, Price, Skeleton, StatePill, useToast, type PillState } from "@/components/ui";
+import { Badge, BottomSheet, Button, buttonClasses, Card, Countdown, cx, EmptyState, Field, Icon, Input, Price, Select, Skeleton, StatePill, useToast, type PillState } from "@/components/ui";
 import { api } from "@/lib/client/api";
 import { getLive, type LiveMsg } from "@/lib/client/live";
 import { rupees } from "@/lib/codec";
-import type { Desk, DeskOrder, OrderState } from "@/lib/types";
-import { clock, errMsg, useMe, useWide } from "./kit";
+import type { Desk, DeskOrder, DropSummary, OrderState } from "@/lib/types";
+import { clock, errMsg, useMe, useWide, waBuyer, when } from "./kit";
+import { WaButton } from "./Ledger";
 
 const GROUPS: { state: OrderState; title: string; pill: PillState }[] = [
   { state: "held", title: "Waiting for payment", pill: "held" },
@@ -66,7 +67,8 @@ export function DeskView() {
   };
 
   const total = desk ? Object.values(desk.orders).reduce((a, l) => a + l.length, 0) : 0;
-  const room = sel && <OrderRoom key={sel.orderId} orderId={sel.orderId} viewer="staff" embedded />;
+  const wa = sel && !me.shop.isSandbox ? waBuyer(sel.phone, { shop: me.shop.name, buyer: sel.buyer, orderNo: sel.orderNo, item: sel.item, variant: sel.variantLabel, amount: rupees(sel.amountPaise), orderId: sel.orderId }) : null;
+  const room = sel && <>{wa && <div className="mb-2"><WaButton href={wa} who={sel.buyer} /></div>}<OrderRoom key={sel.orderId} orderId={sel.orderId} viewer="staff" embedded /></>;
 
   return (
     <div className="flex flex-col gap-4">
@@ -77,6 +79,8 @@ export function DeskView() {
           <Toggle on={waiting} onClick={() => setWaiting(!waiting)} icon="clock">Waiting for payment</Toggle>
         </div>
       </div>
+
+      <CsvPicker />
 
       <div className={cx("grid gap-5", sel && wide ? "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]" : "lg:grid-cols-[minmax(0,1fr)_380px]")}>
         <div className="flex min-w-0 flex-col gap-5">
@@ -164,5 +168,23 @@ function Toggle({ on, onClick, icon, children }: { on: boolean; onClick: () => v
       className={cx("inline-flex min-h-12 items-center gap-1.5 rounded-wobble-2 border-2 border-ink px-3 font-semibold", on ? "bg-lime shadow-ink-sm" : "bg-card")}>
       <Icon name={on ? "check" : icon} size={18} />{children}
     </button>
+  );
+}
+
+/** Pick a drop, download its orders as CSV (GET /api/exports/orders.csv). */
+function CsvPicker() {
+  const [drops, setDrops] = useState<DropSummary[] | null>(null);
+  const [id, setId] = useState("");
+  useEffect(() => { api("GET /api/drops").then((r) => { setDrops(r.drops); setId(r.drops[0]?.dropId ?? ""); }, () => setDrops([])); }, []);
+  if (!drops?.length) return null;
+  return (
+    <div className="flex flex-wrap items-end gap-2" data-testid="csv-picker">
+      <Field label="Orders sheet" className="min-w-0 flex-1 basis-56">
+        <Select name="csvDrop" value={id} onChange={(e) => setId(e.target.value)}>
+          {drops.map((d) => <option key={d.dropId} value={d.dropId}>{d.title} · {when(d.startsAt)}</option>)}
+        </Select>
+      </Field>
+      <a href={`/api/exports/orders.csv?dropId=${id}`} download className={buttonClasses("ghost")}><Icon name="arrowRight" size={20} className="rotate-90" />Download CSV</a>
+    </div>
   );
 }

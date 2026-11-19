@@ -1,6 +1,6 @@
 "use client";
 // Small browser hooks shared by the buyer screens.
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { api } from "@/lib/client/api";
 
 // ---- a shared 1 s clock (render-safe "now")
@@ -29,20 +29,44 @@ const isPhoneNow = () => matchMedia("(pointer: coarse)").matches || /Android|iPh
 export const useIsPhone = () => useSyncExternalStore(() => () => {}, isPhoneNow, () => false);
 
 /** Judge mode safety net: POST /api/try/tick every second while a sandbox room or order page is open.
- *  `where` tells the bot script where the judge is (piece 2 waits until they are back in the room). */
-export function useTryTick(dropId: string | null | undefined, where: "room" | "order") {
+ *  `where` tells the bot script where the judge is (piece 2 waits until they are back in the room).
+ *  Fire-and-forget: a slow tick never blocks the page; after 8 s we stop waiting for it and send the next one.
+ *  Returns true while a tick has been in flight for more than 3 s (the coach says "Waiting for the server…"). */
+export function useTryTick(dropId: string | null | undefined, where: "room" | "order"): boolean {
+  const [slow, setSlow] = useState(false);
   useEffect(() => {
     if (!dropId) return;
-    let stopped = false, busy = false;
+    let stopped = false, since = 0;
     const t = setInterval(() => {
-      if (busy || stopped || !navigator.onLine) return;
-      busy = true;
-      api("POST /api/try/tick", { dropId, where })
+      if (stopped || !navigator.onLine) return;
+      const now = Date.now();
+      if (since) { setSlow(now - since > 3000); if (now - since < 8000) return; }
+      const mine = since = now;
+      withTimeout(api("POST /api/try/tick", { dropId, where }), 8000)
         .catch((e: { status?: number }) => { if (e.status === 404) { stopped = true; clearInterval(t); } })
-        .finally(() => { busy = false; });
+        .finally(() => { if (since === mine) { since = 0; setSlow(false); } });
     }, 1000);
     return () => { stopped = true; clearInterval(t); };
   }, [dropId, where]);
+  return slow;
+}
+
+/** Rejects after `ms` (the request itself is not cancelled; its late answer is ignored by the caller). */
+export function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(Object.assign(new Error("timeout"), { code: "timeout", status: 0 })), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
+
+/** True once `ms` have passed since mount (or since `key` changed): "Still connecting…" after a silent wait. */
+export function useSlow(ms: number, key?: unknown): boolean {
+  const [slow, setSlow] = useState<{ key: unknown; v: boolean }>({ key, v: false });
+  useEffect(() => {
+    const t = setTimeout(() => setSlow({ key, v: true }), ms);
+    return () => clearTimeout(t);
+  }, [ms, key]);
+  return slow.key === key && slow.v;
 }
 
 /** The PRD's display time for receipts and chat: "20:04". */

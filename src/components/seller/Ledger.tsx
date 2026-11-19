@@ -1,10 +1,12 @@
 "use client";
 // Claims ledger: one row per claim, grouped holds -> waitlist -> paid -> ended, so a promotion visibly moves up.
 // Stacked rows at every width (never a squeezed table). Tap a name to see the phone number.
-import { useState } from "react";
-import { Avatar, Badge, Button, Countdown, cx, StatePill, type PillState } from "@/components/ui";
+import { useRef, useState } from "react";
+import { Avatar, Badge, Button, Countdown, cx, Icon, StatePill, type PillState } from "@/components/ui";
 import { tapTime } from "@/lib/codec";
 import type { ClaimState, ConsoleLedgerEntry } from "@/lib/types";
+import { holdOrder } from "./consoleLogic";
+import { useMe, waBuyer } from "./kit";
 
 const PILL: Record<ClaimState, { state: PillState; label?: string }> = {
   held: { state: "held", label: "Held" },
@@ -32,14 +34,24 @@ export function Ledger({ rows, showPiece, onOpen, onCancel }: {
   onOpen: (r: ConsoleLedgerEntry) => void; onCancel: (r: ConsoleLedgerEntry) => void;
 }) {
   const [phoneFor, setPhoneFor] = useState<string | null>(null);
+  const me = useMe();
+  // While the pointer is over the list or a row has focus, rows keep their places (a row never slides away from
+  // the button about to be pressed); the fresh order applies on leave.
+  const [frozen, setFrozen] = useState<string[] | null>(null);
+  const hover = useRef(false), list = useRef<HTMLOListElement>(null);
+  const sorted = sortLedger(rows);
+  const freeze = () => setFrozen((f) => f ?? sorted.map((r) => r.claimId));
+  const thaw = () => { if (!hover.current && !list.current?.contains(document.activeElement)) setFrozen(null); };
   return (
-    <ol className="flex flex-col gap-2" aria-label="Claims" data-testid="ledger">
-      {sortLedger(rows).map((r) => {
+    <ol ref={list} className="flex flex-col gap-2" aria-label="Claims" data-testid="ledger" data-frozen={frozen ? "" : undefined}
+      onPointerEnter={() => { hover.current = true; freeze(); }} onPointerLeave={() => { hover.current = false; thaw(); }}
+      onFocus={freeze} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setTimeout(thaw, 0); }}>
+      {holdOrder(sorted, frozen).map((r) => {
         const p = PILL[r.state];
         const promotedHold = r.promoted && (r.state === "held" || r.state === "payment_claimed");
         return (
-          // key includes the state: a row that changes group re-mounts and pops in at its new place
-          <li key={`${r.claimId}:${r.state}`} data-testid="ledger-row" data-state={r.state} data-buyer={r.buyer}
+          // key = claim: a row keeps its DOM node (and focus) when its state changes
+          <li key={r.claimId} data-testid="ledger-row" data-state={r.state} data-buyer={r.buyer}
             className={cx("pop-in flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-wobble border-2 border-ink px-3 py-2",
               promotedHold ? "bg-lime/50" : r.state === "waitlisted" ? "bg-yellow/60" : RANK[r.state] === 3 ? "bg-grey/60" : "bg-card")}>
             <Avatar name={r.buyer} bot={r.isBot} size={36} />
@@ -65,6 +77,7 @@ export function Ledger({ rows, showPiece, onOpen, onCancel }: {
             {r.orderId && (ACTIVE.has(r.state)) && (
               <div className="flex gap-1.5">
                 <Button size="sm" variant="ghost" icon="chat" onClick={() => onOpen(r)}>Order</Button>
+                <WaButton href={me.shop.isSandbox || r.isBot ? null : waBuyer(r.phone, { shop: me.shop.name, buyer: r.buyer, orderNo: r.orderNo, item: r.title, variant: r.variantLabel, orderId: r.orderId })} who={r.buyer} />
                 {(r.state === "held" || r.state === "payment_claimed") && (
                   <Button size="sm" variant="ghost" icon="cross" onClick={() => onCancel(r)} aria-label={`Cancel hold for ${r.buyer}`}>Cancel</Button>
                 )}
@@ -74,5 +87,16 @@ export function Ledger({ rows, showPiece, onOpen, onCancel }: {
         );
       })}
     </ol>
+  );
+}
+
+/** "WhatsApp buyer" link (opens WhatsApp with the order summary); nothing when there is no phone to message. */
+export function WaButton({ href, who }: { href: string | null; who: string }) {
+  if (!href) return null;
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer" aria-label={`WhatsApp ${who}`} data-testid="wa-buyer"
+      className="inline-flex min-h-12 items-center gap-1.5 rounded-wobble-2 border-[2.5px] border-ink bg-mint px-3 font-extrabold shadow-ink-sm">
+      <Icon name="share" size={18} />WhatsApp buyer
+    </a>
   );
 }

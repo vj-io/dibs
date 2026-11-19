@@ -24,7 +24,7 @@ Dibs is a live sale room. The seller drops one piece at a time. Buyers tap **Dib
 
 - **Seller console:** go live, drop next, claims ledger, room chat with mute and ban, team desk, dashboard.
 - **Buyer:** one link from WhatsApp, a name and a phone number, one tap.
-- **Judge mode (/try):** a private demo room with 40 labelled 🤖 bots, a manual run on production reached the promotion and the order room about 30 to 40 seconds after the tap. Be a buyer or be the seller.
+- **Judge mode (/try):** a private demo room with 40 labelled 🤖 bots, the promotion and the order room come about 25 seconds after the tap (about 34 seconds from the click; 25 simulated judges on this build, 22 to 27 s after the tap; bot holds 12 s, yours 90 s). Be a buyer or be the seller.
 - **Pages:** /how-it-works (the Nexconn feature map with live flag state), /impact (real usage only), /health (staff only).
 
 Stack: Next.js 16, TypeScript, Supabase Postgres in Mumbai, Vercel in Mumbai, Nexconn Chat Web SDK and Server API (Singapore), Vercel AI SDK.

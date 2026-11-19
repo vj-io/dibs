@@ -13,9 +13,36 @@ async function finishLater() {
   }
 }
 
+const BUDGET_MS = 1500;
+let running: Promise<void> | null = null;
+let again = false;
+
+/**
+ * One drain per instance at a time. A call that arrives while one runs does not start a second (in a 300-tap burst,
+ * 298 of 300 concurrent drains found nothing to send: docs/perf.md); it asks the running one to go round once more,
+ * so rows written after that drain's last lease still go out, and it waits for the same promise. Bounded by the budget.
+ */
+function drainShared(dropId: string | null): Promise<void> {
+  if (running) { again = true; return running; }
+  running = (async () => {
+    const t0 = Date.now();
+    let more = false;
+    try {
+      do {
+        again = false;
+        const r = await drainOutbox({ budgetMs: Math.max(200, BUDGET_MS - (Date.now() - t0)) }); // never throws
+        if (r.failed) console.warn(JSON.stringify({ outbox: "failed_sends", dropId, failed: r.failed }));
+        more = r.more;
+      } while (again && !more && Date.now() - t0 < BUDGET_MS);
+      if (more || again) await finishLater();
+    } finally {
+      running = null;
+    }
+  })();
+  return running;
+}
+
 export async function afterWrite(dropId: string | null, event?: DropEvent): Promise<void> {
-  const r = await drainOutbox({ budgetMs: 1500 }); // never throws
-  if (r.failed) console.warn(JSON.stringify({ outbox: "failed_sends", dropId, failed: r.failed }));
-  if (r.more) await finishLater();
+  await drainShared(dropId);
   if (event) await onDropEvent(event).catch((e) => console.error("[afterWrite] onDropEvent", e));
 }

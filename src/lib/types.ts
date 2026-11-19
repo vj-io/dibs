@@ -124,7 +124,7 @@ export type OrderView = {
   variant: { key: string; label: string };
   drop: { id: string; code: string; title: string; isSandbox: boolean };
   shop: { id: string; name: string; slug: string; supportWhatsapp: string | null };
-  payment: { upiId: string | null; payee: string; amountPaise: number; upiLink: string | null };
+  payment: { upiId: string | null; payee: string; amountPaise: number; upiLink: string | null; demo: boolean }; // demo: upiLink is plain text, not payable
   /** phone only when viewer = staff */
   buyer: { displayName: string; phone?: string | null };
   assignedTo: { staffId: string; displayName: string } | null;
@@ -158,7 +158,7 @@ export type HealthReport = {
   mode: "nexconn" | "mock"; features: PublicConfig["features"]; textEnvelope: boolean;
   nexconn: { recent: { kind: string; ok: boolean; code: string; ms: number; at: number }[];
     lastHour: { kind: string; calls: number; failures: number; p50Ms: number | null; lastErrorCode: string | null }[] };
-  outbox: { pending: number; failed: number; oldestPendingAt: string | null; recentFailures: { id: string; msgType: string; error: string | null; at: string }[] };
+  outbox: { pending: number; failed: number; stuck: number; oldestPendingAt: string | null; recentFailures: { id: string; msgType: string; error: string | null; at: string }[] };
   sweeps: { at: string; ms: number; ok: boolean; drops: number }[];
   ai: { job: string; model: string | null; calls: number; ok: number; avgMs: number | null }[];
 };
@@ -233,4 +233,55 @@ export type Api = {
   // judge mode (WP7)
   "POST /api/try/start": { req: { role: "buyer" | "seller"; name?: string }; res: { dropId: string; code: string; shopSlug: string; shareUrl: string; role: "buyer" | "seller"; script: { atMs: number | null; text: string }[] } };
   "POST /api/try/tick": { req: { dropId: string; where?: "room" | "order" }; res: { ok: true; status: "scheduled" | "live" | "ended" | null } };
+
+  // seller onboarding without email (password accounts, invite links), sample pieces, exports
+  /** errors: account_exists 409, rate_limited 429, invalid 400 (email / password rules) */
+  "POST /api/seller/signup": { req: { email: string; password: string; name: string }; res: { needsShop: false; me: SellerMe } | { needsShop: true; email: string } };
+  /** errors: bad_login 401 (same answer whether or not the email exists), rate_limited 429 */
+  "POST /api/seller/login": { req: { email: string; password: string }; res: { needsShop: false; me: SellerMe } | { needsShop: true; email: string } };
+  /** errors: bad_invite 400, invite_expired 410, invite_used 410, bad_login 401 (email has an account, wrong password), has_shop 409 */
+  "POST /api/seller/invite": { req: { token: string; password: string }; res: { needsShop: false; me: SellerMe } | { needsShop: true; email: string } };
+  "POST /api/seller/password": { req: { password: string }; res: Ok };
+  "POST /api/shops/:id/staff/:staffId/link": { req: undefined; res: { inviteUrl: string } };
+  "POST /api/products/samples": { req: undefined; res: { products: Product[] } };
+  "DELETE /api/products/samples": { req: undefined; res: { removed: number; products: Product[] } };
+
+  // shop club (FR-26, FEATURE_COMMUNITY)
+  "GET /api/club/:shopSlug": { req: undefined; res: ClubSummary };
+  "POST /api/club/join": { req: { shopSlug: string }; res: { memberCount: number } };
+  "POST /api/club/leave": { req: { shopSlug: string }; res: { memberCount: number } };
+  "POST /api/club/send": { req: { shopSlug: string; text: string }; res: { message: ClubChatLine } };
+  "POST /api/club/review": { req: { orderId: string; stars: number; text?: string }; res: { review: ClubPostView } };
+  "POST /api/club/announce": { req: { text: string; dropCode?: string | null }; res: Ok };
+  "GET /api/club/manage": { req: undefined; res: ClubManage };
+  "POST /api/club/remove": { req: { buyerId: string }; res: Ok };
+  "POST /api/club/hide": { req: { reviewId: string; reason: string }; res: Ok };
+};
+
+/** POST /api/shops/:id/staff also returns the invite link (7 days; works with no email sent). */
+export type StaffInviteRes = { member: StaffMember; inviteUrl: string };
+// ------------------------------------------------------------------ shop club
+/** An announcement (#drops), a review (#reviews) or a chat line (#chat). Names are masked display names. */
+export type ClubPostView = {
+  id: string; text: string; at: string; stars: number | null; name: string | null; from: string | null; msgId: string | null;
+  drop: { code: string; status: DropStatus; startsAt: string; shareUrl: string } | null;
+  hiddenAt?: string | null; hiddenReason?: string | null;
+};
+export type ClubChatLine = { id: string; channel: string; from: string; fromName?: string; at: number; kind: "text"; text: string };
+export type ClubSummary = {
+  enabled: true; clubId: string | null;
+  /** Demo shops: the club restarts with the demo slot; nothing older counts. */
+  since: string | null;
+  shop: { id: string; name: string; slug: string; logoUrl: string | null; isSandbox: boolean };
+  memberCount: number;
+  nextDrop: { code: string; title: string; status: "scheduled" | "live"; startsAt: string; shareUrl: string } | null;
+  announcements: ClubPostView[]; reviews: ClubPostView[];
+  /** members only, oldest first */
+  chat: ClubPostView[];
+  me: { userId: string; member: boolean; banned: boolean; reviewable: { orderId: string; title: string; orderNo: number }[] } | null;
+};
+export type ClubManage = {
+  clubId: string | null; shopSlug: string; memberCount: number;
+  members: { buyerId: string; name: string; joinedAt: string }[];
+  chat: ClubPostView[]; reviews: ClubPostView[]; announcements: ClubPostView[];
 };

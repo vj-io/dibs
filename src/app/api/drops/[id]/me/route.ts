@@ -1,8 +1,8 @@
 // The calling buyer's holds (with timers) and waitlist positions in this drop (sweep first).
+import { after } from "next/server";
 import { afterWrite } from "@/lib/server/after";
-import { fn } from "@/lib/server/db";
+import { rpc } from "@/lib/server/db";
 import { json, notFound, route, uuidParam } from "@/lib/server/http";
-import { sweep } from "@/lib/server/queries";
 import { requireBuyer } from "@/lib/server/session";
 import type { MyStatus } from "@/lib/types";
 
@@ -12,6 +12,9 @@ type Ctx = { params: Promise<{ id: string }> };
 export const GET = route("GET /api/drops/:id/me", async (_req: Request, ctx: Ctx) => {
   const id = await uuidParam(ctx, "id");
   const b = await requireBuyer();
-  if (await sweep(id)) await afterWrite(id);
-  return json((await fn<MyStatus | null>("my_status", id, b.buyerId)) ?? notFound());
+  // one round trip: sweep (lock-free unless a hold is due) + my_status (api_me, 0008). Every room card makes each
+  // connected buyer refetch this, so in a burst it competes with the claims for PostgREST's pool.
+  const r = await rpc<{ swept: boolean; status: MyStatus | null }>("api_me", { p_drop: id, p_buyer: b.buyerId });
+  if (r.swept) after(() => afterWrite(id));
+  return json(r.status ?? notFound());
 });

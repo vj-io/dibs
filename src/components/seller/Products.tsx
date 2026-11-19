@@ -43,7 +43,8 @@ function check(d: Draft) {
   return e;
 }
 
-export function Products() {
+/** `embedded`: inside the first-run wizard (a sub-heading, not the page title). */
+export function Products({ embedded }: { embedded?: boolean }) {
   const toast = useToast();
   const demo = useMe().shop.isSandbox; // the shared demo shop's catalog is read-only
   const [list, setList] = useState<Product[] | null>(null);
@@ -112,7 +113,7 @@ export function Products() {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-3xl">Products</h1>
+        {embedded ? <h2 className="text-2xl">Your pieces</h2> : <h1 className="text-3xl">Products</h1>}
         {!demo && <Button icon="plus" onClick={() => open()}>Add a piece</Button>}
       </div>
       {demo && <p className="rounded-wobble border-2 border-ink bg-sky px-3 py-2 font-semibold" data-testid="demo-note">{DEMO_NOTE}</p>}

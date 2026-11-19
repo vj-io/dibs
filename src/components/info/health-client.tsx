@@ -17,20 +17,28 @@ function Pill({ level, children }: { level: Level; children?: React.ReactNode })
   return <Badge tint={LEVEL[level].tint} icon={LEVEL[level].icon}>{children ?? level}</Badge>;
 }
 
-/** Down: the health API itself failed, or every one of at least 3 recent Nexconn calls failed. Degraded: any other failure signal. */
-function judge(h: HealthReport | null, failed: boolean, browser: LiveStatus | "unavailable" | "checking"): { level: Level; reasons: string[] } {
-  if (failed) return { level: "Down", reasons: ["The health API did not answer."] };
-  if (!h) return { level: "OK", reasons: [] };
-  const down: string[] = [];
-  const deg: string[] = [];
-  const r = h.nexconn.recent;
-  if (r.length >= 3 && r.every((c) => !c.ok)) down.push("Every recent Nexconn call failed.");
-  else if (r.some((c) => !c.ok)) deg.push(`${r.filter((c) => !c.ok).length} of the last ${r.length} Nexconn calls failed.`);
-  if (h.outbox.failed > 0) deg.push(`${h.outbox.failed} outbox message(s) failed for good.`);
-  for (const a of h.ai) if (a.ok < a.calls) deg.push(`AI helper "${a.job}": ${a.calls - a.ok} of ${a.calls} calls failed in 24 h (it falls back to rules).`);
+const SENDS = /^(?:room_send|group_send|user_)/;
+
+/**
+ * The headline is about the sale only. Down: the health API (and so the database) does not answer, or every one of
+ * at least 3 recent Nexconn sends failed. Degraded: outbox messages failed (24 h) or stuck, or a sweep failed.
+ * AI helpers, single Nexconn errors and this browser's connection are reported as notes and never change it.
+ */
+function judge(h: HealthReport | null, failed: boolean, browser: LiveStatus | "unavailable" | "checking"): { level: Level; reasons: string[]; notes: string[] } {
+  if (failed) return { level: "Down", reasons: ["The health API (and with it the database) did not answer."], notes: [] };
+  if (!h) return { level: "OK", reasons: [], notes: [] };
+  const down: string[] = [], deg: string[] = [], notes: string[] = [];
+  const sends = h.nexconn.recent.filter((c) => SENDS.test(c.kind));
+  if (sends.length >= 3 && sends.every((c) => !c.ok)) down.push("Every recent Nexconn send failed.");
+  if (h.outbox.failed > 0) deg.push(`${h.outbox.failed} outbox message(s) failed for good in the last 24 h.`);
+  if (h.outbox.stuck > 0) deg.push(`${h.outbox.stuck} outbox message(s) waiting for over 2 minutes.`);
   if (h.sweeps.some((s) => !s.ok)) deg.push("A recent sweep did not finish cleanly.");
-  if (browser === "offline" || browser === "unavailable") deg.push("This browser has no live connection.");
-  return { level: down.length ? "Down" : deg.length ? "Degraded" : "OK", reasons: [...down, ...deg] };
+  const bad = h.nexconn.recent.filter((c) => !c.ok);
+  if (bad.length && !down.length) notes.push(`Nexconn: ${bad.length} of the last ${h.nexconn.recent.length} calls failed (retried by the outbox).`);
+  const ai = h.ai.reduce((t, a) => ({ calls: t.calls + a.calls, ok: t.ok + a.ok }), { calls: 0, ok: 0 });
+  if (ai.calls > ai.ok) notes.push(`AI helpers: ${ai.calls - ai.ok} of ${ai.calls} model calls failed in 24 h; those messages fell back to rules.`);
+  if (browser === "offline" || browser === "unavailable") notes.push("This browser has no live connection.");
+  return { level: down.length ? "Down" : deg.length ? "Degraded" : "OK", reasons: [...down, ...deg], notes };
 }
 
 const clock = (t: number | string) => new Date(t).toLocaleTimeString("en-IN", { hour12: false });
@@ -77,7 +85,7 @@ export function HealthClient() {
     return () => { dead = true; off?.(); };
   }, [auth]);
 
-  const { level, reasons } = judge(h, failed, browser);
+  const { level, reasons, notes } = judge(h, failed, browser);
 
   return (
     <>
@@ -97,8 +105,14 @@ export function HealthClient() {
               </div>
               {reasons.length > 0 ? <ul className="list-disc pl-6">{reasons.map((r) => <li key={r}>{r}</li>)}</ul> : <p>{h ? "No failure signals right now." : "Waiting for the first reading…"}</p>}
               <p className="text-[0.95rem]">
-                {at ? `Updated ${clock(at)}, refreshes every 5 s.` : "Loading…"} Rules: Down when the health API fails or all recent Nexconn calls fail; Degraded on any other failure.
+                {at ? `Updated ${clock(at)}, refreshes every 5 s.` : "Loading…"} Rules: Down when the database or Nexconn sends fail; Degraded when outbox messages fail or get stuck, or a sweep fails. AI helpers and single call errors are notes below and never change the status.
               </p>
+              {notes.length > 0 && (
+                <>
+                  <h2 className="text-lg">Notes (do not change the status)</h2>
+                  <ul className="list-disc pl-6">{notes.map((n) => <li key={n}>{n}</li>)}</ul>
+                </>
+              )}
             </Card>
 
             {h && (
@@ -128,7 +142,8 @@ export function HealthClient() {
                   <h2 id="h-ob" className="text-xl">Outbox</h2>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <Badge tint={h.outbox.pending ? "yellow" : "mint"} icon={h.outbox.pending ? "clock" : "check"}>{h.outbox.pending} pending</Badge>
-                    <Badge tint={h.outbox.failed ? "pink" : "mint"} icon={h.outbox.failed ? "cross" : "check"}>{h.outbox.failed} failed</Badge>
+                    <Badge tint={h.outbox.failed ? "pink" : "mint"} icon={h.outbox.failed ? "cross" : "check"}>{h.outbox.failed} failed (24 h)</Badge>
+                    <Badge tint={h.outbox.stuck ? "pink" : "mint"} icon={h.outbox.stuck ? "clock" : "check"}>{h.outbox.stuck} stuck</Badge>
                     <span className="text-muted">Oldest pending: {age(h.outbox.oldestPendingAt)}</span>
                   </div>
                   {h.outbox.recentFailures.length > 0 && (

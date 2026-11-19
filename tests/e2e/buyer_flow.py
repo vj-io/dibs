@@ -23,7 +23,7 @@ from playwright.async_api import Page, async_playwright, expect
 
 ROOT = Path(__file__).resolve().parents[2]
 BASE = os.environ.get("BASE", "http://localhost:3100")
-SHOTS = ROOT / ".shots" / "buyer2"
+SHOTS = ROOT / ".shots" / "buyer3"
 W, H = 360, 640
 # Room cards normally land in about a second. On the shared dev DB another drainer (the deployed app's cron) can claim a
 # mock-mode outbox row first, so the card never reaches the local bus and the room catches up through its 30 s HTTP poll.
@@ -55,6 +55,8 @@ def watch(page: Page, who: str) -> Page:
     def on_console(m):
         url = (m.location or {}).get("url", "")
         if m.type != "error" or any(x in url for x in expected_404):  # the deliberate not-found visits
+            return
+        if "ERR_INTERNET_DISCONNECTED" in m.text:  # only during the deliberate set_offline step (the browser's own SSE retry)
             return
         if "/api/mock/send?history=" in url and "403" in m.text:
             # the order group was never created on the local mock bus: its SYS:EnsureGroup outbox row was claimed by
@@ -121,12 +123,37 @@ async def item_live(page: Page, title: str):
         raise
 
 
+def ready(page: Page, timeout: int = 10000):
+    """Dibs! can claim: it is never `disabled` (it stays focusable); `aria-disabled` says when it can't."""
+    return expect(page.locator("button", has_text="Dibs!")).not_to_have_attribute("aria-disabled", "true", timeout=timeout)
+
+
+async def tab_to(page: Page, js_test: str, limit: int = 60) -> None:
+    """Keyboard only: press Tab until the focused element passes js_test (a JS expression over `el`)."""
+    for _ in range(limit):
+        await page.keyboard.press("Tab")
+        if await page.evaluate(f"(() => {{ const el = document.activeElement; return !!el && ({js_test}); }})()"):
+            return
+    raise AssertionError(f"Tab never reached: {js_test}")
+
+
+async def in_view(page: Page, loc, name: str) -> None:
+    box = await loc.bounding_box()
+    vh = page.viewport_size["height"]
+    check(f"in view without scrolling: {name}", box is not None and box["y"] >= 0 and box["y"] + box["height"] <= vh + 1, json.dumps(box))
+
+
 async def dibs_button(page: Page):
     return page.locator("button", has_text="Dibs!").first
 
 
 async def join(page: Page, name: str, phone: str):
-    await page.get_by_role("button", name="Join the room").click()
+    try:
+        await page.get_by_role("button", name="Join the room").click()
+    except Exception:
+        await page.screenshot(path=str(SHOTS / "debug-join.png"))
+        print("DEBUG join page:", page.url, (await page.inner_text("body"))[:300].replace("\n", " | "))
+        raise
     dlg = page.get_by_role("dialog")
     await dlg.get_by_label("Your name").fill(name)
     await dlg.get_by_label("Phone number").fill(phone)
@@ -153,7 +180,7 @@ async def buyer_scenarios(p, browser):
 
         # waiting room + join
         await a.goto(url)
-        await expect(a.get_by_text("Waiting room")).to_be_visible()
+        await expect(a.get_by_text("Waiting room")).to_be_visible(timeout=CARD_WAIT)
         await expect(a.locator("button", has_text="Dibs!")).to_have_count(0)  # no piece yet
         await shot(a, "01-waiting-room-anonymous")
         dlg = await join(a, "Priya Sharma", "12345")
@@ -195,7 +222,7 @@ async def buyer_scenarios(p, browser):
         await s.post(f"/api/drops/{drop_id}/next")
         for pg in (a, b):
             await item_live(pg, "Jhumka earrings")
-            await expect(pg.locator("button", has_text="Dibs!")).to_be_enabled(timeout=10000)
+            await ready(pg)
         # the sticky bar keeps Dibs! on screen wherever the buyer has scrolled (A is down at the chat input)
         box = await a.locator("button", has_text="Dibs!").bounding_box()
         check("Dibs! visible while scrolled down to the chat", box is not None and 0 <= box["y"] and box["y"] + box["height"] <= H, json.dumps(box))
@@ -210,24 +237,27 @@ async def buyer_scenarios(p, browser):
             for loc in (pg.get_by_role("heading", name="Jhumka earrings"), pg.locator("button", has_text="Dibs!"), pg.locator("#dibs-status")):
                 box = await loc.bounding_box()
                 check("above the fold at 360x640", box is not None and box["y"] >= 0 and box["y"] + box["height"] <= H, json.dumps(box))
-        for name, vp in (("375x812", {"width": 375, "height": 812}), ("1280x800", {"width": 1280, "height": 800})):
+        for name, vp in (("390x844", {"width": 390, "height": 844}), ("1440x900", {"width": 1440, "height": 900})):
             extra = await browser.new_context(storage_state=await ca.storage_state(), viewport=vp, is_mobile=vp["width"] < 800, has_touch=vp["width"] < 800)
             ep = watch(await extra.new_page(), name)
             await ep.goto(url)
             await item_live(ep, "Jhumka earrings")
-            await expect(ep.locator("button", has_text="Dibs!")).to_be_enabled(timeout=10000)
+            await ready(ep)
             await shot(ep, f"04-live-piece-{name}", full=False)
+            await in_view(ep, ep.locator("button", has_text="Dibs!"), f"Dibs! at {name}")
             await extra.close()
         await asyncio.gather((await dibs_button(a)).click(), (await dibs_button(b)).click())
         won_a = a.locator("#dibs-status").get_by_text("You got it! Pay within")
         won_b = b.locator("#dibs-status").get_by_text("You got it! Pay within")
-        for _ in range(50):
+        for _ in range(200):  # a claim took up to 8 s on the shared server
             if await won_a.is_visible() or await won_b.is_visible():
                 break
             await asyncio.sleep(0.1)
         winner, loser = (a, b) if await won_a.is_visible() else (b, a)
-        await expect(loser.locator("#dibs-status").get_by_text("You're #1 on the waitlist. We'll tell you the moment it's yours.")).to_be_visible(timeout=5000)
+        await expect(loser.locator("#dibs-status").get_by_text("You're #1 on the waitlist. We'll tell you the moment it's yours.")).to_be_visible(timeout=20000)
         check("race: one winner, one waitlisted", True, "winner=" + ("A" if winner is a else "B"))
+        focus = await loser.evaluate("document.activeElement && document.activeElement.textContent")
+        check("focus stays on Dibs! after a tap", "Dibs!" in (focus or ""), repr(focus))
         await winner.get_by_role("button", name="Stay here").click()  # stay for the room view; the order chat would open by itself
         for pg in (a, b):
             await expect(pg.get_by_role("list", name="Sold and back in play").locator("li").first).to_contain_text("Sold to", timeout=CARD_WAIT)
@@ -242,12 +272,15 @@ async def buyer_scenarios(p, browser):
         order_id = winner.url.rsplit("/", 1)[1]
         await expect(winner.get_by_text("Pay ₹1,450 to Meera Jewels (meera@upi). Pay only here, never to a number in chat.")).to_be_visible()
         await expect(winner.get_by_role("link", name="Pay ₹1,450 with UPI")).to_be_visible()  # phone: UPI app button
-        await shot(winner, "07-order-held-phone")
-        lap = await browser.new_context(storage_state=await (ca if winner is a else cb).storage_state(), viewport={"width": 1280, "height": 900})
+        await winner.evaluate("scrollTo(0, 0)")
+        await in_view(winner, winner.get_by_role("button", name="I've paid"), "I've paid at 360x640")
+        await shot(winner, "07-order-held-360x640", full=False)
+        lap = await browser.new_context(storage_state=await (ca if winner is a else cb).storage_state(), viewport={"width": 1440, "height": 900})
         lp = watch(await lap.new_page(), "laptop")
         await lp.goto(f"{BASE}/o/{order_id}")
         await expect(lp.get_by_role("img", name="UPI QR code: pay ₹1,450 to Meera Jewels")).to_be_visible()
-        await shot(lp, "08-order-held-laptop-qr")
+        await in_view(lp, lp.get_by_role("button", name="I've paid"), "I've paid at 1440x900")
+        await shot(lp, "08-order-held-1440x900", full=False)
         await lap.close()
         await winner.get_by_label("UTR number (optional)").fill("123456789012")
         await winner.get_by_role("button", name="I've paid").click()
@@ -263,9 +296,9 @@ async def buyer_scenarios(p, browser):
         await shot(sp, "10-order-staff-view")
         await sp.get_by_role("button", name="Payment received").click()
         await sp.get_by_role("dialog").get_by_role("button", name="Yes, mark paid").click()
-        await expect(sp.get_by_role("button", name="Mark shipped")).to_be_visible(timeout=20000)
+        await expect(sp.get_by_role("button", name="Mark shipped")).to_be_visible(timeout=CARD_WAIT)
         await staff_ctx.close()
-        await expect(winner.get_by_text("Paid · confirmed by")).to_be_visible(timeout=12000)
+        await expect(winner.get_by_text("Paid · confirmed by")).to_be_visible(timeout=CARD_WAIT)
         check("buyer sees Paid after staff confirms", True)
         await shot(winner, "11-order-paid")
 
@@ -275,33 +308,39 @@ async def buyer_scenarios(p, browser):
         for pg in (a, b):
             await item_live(pg, "Stone ring")
             await pg.get_by_role("group", name="Pick an option").get_by_role("button", name=re.compile(r"^S\s")).click()
-            await expect(pg.locator("button", has_text="Dibs!")).to_be_enabled(timeout=10000)
+            await ready(pg)
         await (await dibs_button(b)).click()
         await expect(b.locator("#dibs-status").get_by_text("You got it! Pay within")).to_be_visible()
         await (await dibs_button(a)).click()
         await expect(a.locator("#dibs-status").get_by_text("You're #1 on the waitlist.")).to_be_visible()
-        await b.get_by_role("button", name="Stay here").first.click()  # stay in the room instead of the auto-open
-        await expect(b.get_by_text("My status")).to_be_visible()
-        await shot(b, "12-my-status-hold")
-        await b.get_by_role("button", name="Release").first.click()
+        # nothing else is live, so B's order room opens by itself; B releases the hold from there
+        await b.wait_for_url("**/o/*?from=won", timeout=CARD_WAIT)
+        await expect(b.get_by_text("You got it!").first).to_be_visible(timeout=CARD_WAIT)
+        await shot(b, "12-order-after-win", full=False)
+        await b.get_by_role("button", name="Release hold").click()
         await b.get_by_role("dialog").get_by_role("button", name="Release it").click()
-        await expect(a.locator("#main").get_by_text("It's yours! The buyer ahead didn't pay.").first).to_be_visible(timeout=10000)
+        await expect(a.locator("#main").get_by_text("It's yours! The buyer ahead didn't pay.").first).to_be_visible(timeout=CARD_WAIT)
         check("waitlisted buyer promoted after release", True)
         await shot(a, "13-promoted", full=False)
-        await a.wait_for_url("**/o/*?from=promoted", timeout=10000)
+        try:  # opens by itself when nothing else is live and my status knows the hold; otherwise the status line links to it
+            await a.wait_for_url("**/o/*?from=promoted", timeout=8000)
+        except Exception:
+            await a.locator("#dibs-status").get_by_role("link", name="Open order").click()
+            await a.wait_for_url("**/o/*?from=promoted", timeout=CARD_WAIT)
         await expect(a.get_by_text("It's yours! The buyer ahead didn't pay.").first).to_be_visible()
         await shot(a, "13b-order-after-promotion", full=False)
 
         # piece 3: offline -> Reconnecting… + Dibs disabled -> back online recovers
         await s.post(f"/api/drops/{drop_id}/next")
+        await b.goto(url)
         await item_live(b, "Silver anklet")
-        await expect(b.locator("button", has_text="Dibs!")).to_be_enabled(timeout=10000)
+        await ready(b)
         await cb.set_offline(True)
         await expect(b.get_by_text("Reconnecting…").first).to_be_visible(timeout=5000)
-        await expect(b.locator("button", has_text="Dibs!")).to_be_disabled()
+        await expect(b.locator("button", has_text="Dibs!")).to_have_attribute("aria-disabled", "true")
         await shot(b, "14-reconnecting")
         await cb.set_offline(False)
-        await expect(b.locator("button", has_text="Dibs!")).to_be_enabled(timeout=15000)
+        await ready(b, 15000)
         await expect(b.get_by_role("status").filter(has_text="Reconnecting…")).to_have_count(0)
         await (await dibs_button(b)).click()
         await expect(b.locator("#dibs-status").get_by_text("You got it! Pay within")).to_be_visible()
@@ -320,10 +359,13 @@ async def buyer_scenarios(p, browser):
         missing_order = str(uuid.uuid4())
         expected_404.extend(["/ZZZZZZ", missing_order])
         await a.goto(f"{BASE}/s/{slug}/d/ZZZZZZ")
-        await expect(a.get_by_text("This sale room doesn't exist")).to_be_visible()
+        # the server answers with the site's 404 page; if its 3 s lookup is slow, the room's own not-found screen
+        await expect(a.get_by_text("This sale room doesn't exist").or_(a.get_by_text("Someone already called dibs on this page.")).first).to_be_visible()
+        check("missing room page has an h1", await a.locator("h1").count() >= 1)
         await shot(a, "17-room-not-found")
         await a.goto(f"{BASE}/o/{missing_order}")
-        await expect(a.get_by_text("We can't find this order")).to_be_visible()
+        await expect(a.get_by_role("heading", name="We can't find this order")).to_have_count(1)
+        await expect(a.get_by_text("We can't find this order").last).to_be_visible()
         await shot(a, "18-order-not-found")
         anon = watch(await (await browser.new_context(**PHONE)).new_page(), "anon")
         await anon.goto(f"{BASE}/me")
@@ -343,7 +385,9 @@ async def judge(browser):
     await pg.goto(f"{BASE}/try")
     await shot(pg, "20-try")
     t0 = time.monotonic()
-    await pg.get_by_role("button", name="Be a buyer").click()
+    # the whole judge path below is keyboard only: Tab to a control, Enter to use it
+    await tab_to(pg, "el.textContent.includes('Be a buyer')")
+    await pg.keyboard.press("Enter")
     await pg.wait_for_url("**/s/**", timeout=20000)
     await expect(pg.get_by_text("Demo room · 40 🤖 demo buyers · nothing here is real money")).to_be_visible()
     await shot(pg, "21-judge-room")
@@ -351,15 +395,15 @@ async def judge(browser):
     chips = pg.get_by_role("group", name="Pick an option").locator("button")
     await expect(chips.first).to_be_visible(timeout=CARD_WAIT + 20000)
     await pg.wait_for_timeout(1200)  # let the bots' first taps land, like a person reading the card
-    sold_out = chips.filter(has_text="sold out")
-    if await sold_out.count():
-        await sold_out.first.click()  # a judge usually lands on a sold-out size: the waitlist path
-    elif await chips.count() > 1:
-        await chips.first.click()
-    await expect(dibs).to_be_enabled(timeout=10000)
+    if await chips.count() > 1:  # a judge usually lands on a sold-out size: the waitlist path
+        want = "sold out" if await chips.filter(has_text="sold out").count() else ""
+        await tab_to(pg, f"el.closest('[aria-label=\"Pick an option\"]') && el.textContent.includes('{want}')")
+        await pg.keyboard.press("Enter")
+    await ready(pg)
     results["timings"]["judge_seconds_to_piece_1"] = round(time.monotonic() - t0, 1)
-    await dibs.click()
-    await expect(pg.get_by_text("on the waitlist").or_(pg.get_by_text("You got it!")).first).to_be_visible(timeout=5000)
+    await tab_to(pg, "el.textContent.includes('Dibs!')")
+    await pg.keyboard.press("Enter")
+    await expect(pg.get_by_text("on the waitlist").or_(pg.get_by_text("You got it!")).first).to_be_visible(timeout=20000)
     await shot(pg, "22-judge-after-tap")
     outright = await pg.locator("#dibs-status").get_by_text("You got it!").count() > 0
     results["timings"]["judge_path"] = "won outright" if outright else "waitlisted, then promoted"
@@ -368,10 +412,18 @@ async def judge(browser):
     results["timings"]["judge_seconds_to_its_yours"] = secs
     check("judge path reaches It's yours!", True, f"{secs} s")
     await shot(pg, "23-judge-its-yours")
-    await pg.wait_for_url("**/o/*", timeout=15000)
-    await expect(pg.get_by_text("Demo: tap I've paid").first).to_be_visible()
+    try:  # auto-opens only when no other piece is live and my status knows the hold
+        await pg.wait_for_url("**/o/*", timeout=8000)
+    except Exception:
+        results["timings"]["judge_order_opened_by"] = "link (auto-open held back)"
+        await pg.locator("#main").get_by_role("link", name=re.compile("Open order")).first.click()
+        await pg.wait_for_url("**/o/*", timeout=CARD_WAIT)
+    await expect(pg.get_by_text("Demo: tap I've paid").first).to_be_visible(timeout=CARD_WAIT)
     await shot(pg, "24-judge-order")
-    await pg.get_by_role("button", name="I've paid").click()
+    await pg.evaluate("scrollTo(0, 0)")
+    await in_view(pg, pg.get_by_role("button", name="I've paid"), "judge I've paid at 360x640")
+    await tab_to(pg, "el.textContent.includes(\"I've paid\")")
+    await pg.keyboard.press("Enter")
     await expect(pg.get_by_text("Paid · confirmed by")).to_be_visible(timeout=20000)
     results["timings"]["judge_seconds_to_paid"] = round(time.monotonic() - t0, 1)
     await expect(pg.get_by_role("link", name="Back to the room for piece 2")).to_be_visible()

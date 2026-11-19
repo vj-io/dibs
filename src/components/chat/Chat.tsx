@@ -145,7 +145,7 @@ export function Chat({
                     <Icon name="arrowRight" size={22} stroke={2.6} />
                   </button>
                 </div>
-                <p className="flex justify-between px-1 font-mono text-xs text-muted" aria-live="polite">
+                <p className="flex justify-between px-1 font-mono text-xs text-muted" aria-live="off">
                   <span>{cool ? "One message every 2 s" : ""}</span>
                   <span>{text.length}/{MAX_CHARS}</span>
                 </p>

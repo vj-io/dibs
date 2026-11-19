@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { OrderRoom } from "@/components/order/OrderRoom";
 import { SaleRoom } from "@/components/sale/SaleRoom";
 import {
-  BottomSheet, Button, Card, ConnectionBar, cx, EmptyState, Field, Icon, LinkButton, PhoneFrame, Select, Skeleton, StatePill, Textarea,
+  BottomSheet, Button, buttonClasses, Card, cx, EmptyState, Field, Icon, LinkButton, PhoneFrame, Select, Skeleton, StatePill, Textarea,
   useToast, type PillState,
 } from "@/components/ui";
 import { api } from "@/lib/client/api";
@@ -17,6 +17,8 @@ import { DROP_PILL } from "./DropsPage";
 import { clock, errMsg, ShareCard, since, useMe, useNow } from "./kit";
 import { ACTIVE, Ledger } from "./Ledger";
 import { RoomChat } from "./RoomChat";
+import { ShareKit } from "./ShareKit";
+import { DEMO_BUYERS, sellerCoach } from "./consoleLogic";
 
 const REFETCH = new Set(["DB:Sold", "DB:Back", "DB:Stock", "DB:State", "DB:Item"]);
 const ITEM_PILL: Record<ItemState, { state: PillState; label: string }> = {
@@ -173,8 +175,15 @@ export function Console({ dropId }: { dropId: string }) {
         {state.isSandbox && <StatePill state="demo" />}
         <span className="font-mono text-sm text-muted">code {state.code}</span>
         <span className="font-mono text-sm text-muted" data-testid="viewers">{hb!.viewers == null ? "viewers: not measured" : `${hb!.viewers} watching`}</span>
+        {state.isSandbox && <span className="text-sm font-semibold text-violet-ink" data-testid="demo-buyers">🤖 {DEMO_BUYERS} demo buyers in the room</span>}
       </div>
-      <ConnectionBar status={status} className="-mx-4 lg:mx-0 lg:rounded-wobble lg:border-2" />
+      <LiveBar status={status} />
+      {state.isSandbox && (
+        <p className="flex items-center gap-2 rounded-wobble border-2 border-dashed border-violet-ink bg-violet px-3 py-2 font-hand text-lg leading-tight" data-testid="seller-coach">
+          <Icon name="sparkle" size={20} className="shrink-0 text-violet-ink" />
+          <span><span className="sr-only">Demo guide: </span>{sellerCoach(state, c)}</span>
+        </p>
+      )}
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="flex min-w-0 flex-col gap-4">
@@ -184,7 +193,10 @@ export function Console({ dropId }: { dropId: string }) {
             <Card tint="mint" className="flex flex-col gap-2" data-testid="ended-summary">
               <h2 className="text-2xl">Drop ended</h2>
               <p>{c.ledger.filter((r) => ACTIVE.has(r.state)).length} pieces won · {c.ledger.filter((r) => r.state === "paid" || r.state === "shipped").length} paid · {c.ledger.filter((r) => r.state === "held" || r.state === "payment_claimed").length} holds still running until paid or expired.</p>
-              <LinkButton href={`/seller/dashboard?drop=${dropId}`} icon="sparkle" className="self-start">See the results</LinkButton>
+              <div className="flex flex-wrap gap-2">
+                <LinkButton href={`/seller/dashboard?drop=${dropId}`} icon="sparkle">See the results</LinkButton>
+                <a href={`/api/exports/orders.csv?dropId=${dropId}`} download className={buttonClasses("ghost")}><Icon name="arrowRight" size={20} className="rotate-90" />Download orders (CSV)</a>
+              </div>
             </Card>
           )}
 
@@ -193,6 +205,14 @@ export function Console({ dropId }: { dropId: string }) {
               <h2 className="text-xl">Waiting room is open</h2>
               <p>Buyers who open the link see a countdown to {clock(state.startsAt)} and can chat. Press <b>Go live</b> when you start, then <b>Drop next</b> for the first piece.</p>
             </Card>
+          )}
+          {state.status === "scheduled" && !state.isSandbox && (
+            <details className="group rounded-wobble border-2 border-ink bg-card p-3" open>
+              <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 text-xl font-extrabold">
+                <Icon name="share" />Share kit and checklist<Icon name="chevronDown" className="ml-auto group-open:rotate-180" />
+              </summary>
+              <div className="mt-3"><ShareKit shopName={me.shop.name} title={state.title} startsAt={state.startsAt} url={shareUrl} /></div>
+            </details>
           )}
 
           {liveItem ? (
@@ -328,7 +348,7 @@ export function Console({ dropId }: { dropId: string }) {
             if (!why) return;
             if (await act("cancel", () => api("POST /api/orders/:id/cancel", { reason: why }, { id: cancel.orderId! }), "Hold cancelled. The next buyer in line gets it.")) setCancel(null);
           }}>
-            <p>{cancel.title} · {cancel.variantLabel}. If someone is on the waitlist, they get it straight away; if not, it goes back in stock.</p>
+            <p><b>{cancel.buyer}</b>{cancel.orderNo != null && <> · order #{cancel.orderNo}</>} · {cancel.title} · {cancel.variantLabel}. If someone is on the waitlist, they get it straight away; if not, it goes back in stock.</p>
             <Field label="Reason (the buyer sees it)">
               <Select value={reason} onChange={(e) => setReason(e.target.value)} name="reason">
                 {[...REASONS, "Other"].map((r) => <option key={r}>{r}</option>)}
@@ -336,7 +356,7 @@ export function Console({ dropId }: { dropId: string }) {
             </Field>
             {reason === "Other" && <Field label="Your reason"><Textarea name="otherReason" value={other} maxLength={200} onChange={(e) => setOther(e.target.value)} rows={2} /></Field>}
             <div className="flex flex-wrap gap-2">
-              <Button type="submit" variant="danger" icon="cross" busy={busy === "cancel"} busyLabel="Cancelling…" disabled={reason === "Other" && !other.trim()}>Cancel hold</Button>
+              <Button type="submit" variant="danger" icon="cross" busy={busy === "cancel"} busyLabel="Cancelling…" disabled={reason === "Other" && !other.trim()}>Cancel {cancel.buyer}&apos;s hold</Button>
               <Button variant="ghost" onClick={() => setCancel(null)}>Keep it</Button>
             </div>
           </form>
@@ -360,6 +380,22 @@ function Stat({ label, value, testid }: { label: string; value: number; testid: 
     <div className="rounded-wobble border-2 border-ink bg-paper px-2 py-2">
       <dt className="text-sm font-semibold text-muted">{label}</dt>
       <dd className="font-mono text-3xl font-bold tabular-nums" data-testid={testid}>{value}</dd>
+    </div>
+  );
+}
+
+/**
+ * Live-feed status. The heartbeat keeps the console current every 5 s without it, so this never says the sale is
+ * paused, and a normal connect (under ~3 s) never shows the bar at all.
+ */
+function LiveBar({ status }: { status: LiveStatus }) {
+  const [grace, setGrace] = useState(true);
+  useEffect(() => { const t = setTimeout(() => setGrace(false), 3000); return () => clearTimeout(t); }, []);
+  if (status === "connected" || (grace && status === "connecting")) return null;
+  return (
+    <div role="status" className="-mx-4 flex items-center gap-2 border-y-2 border-ink bg-sky px-4 py-2 font-semibold lg:mx-0 lg:rounded-wobble lg:border-2" data-testid="live-bar">
+      <Icon name="clock" size={20} className="shrink-0 text-sky-ink" />
+      <span>{status === "offline" ? "Live updates reconnecting…" : "Live updates connecting…"} <span className="font-normal">the ledger refreshes every 5 s</span></span>
     </div>
   );
 }

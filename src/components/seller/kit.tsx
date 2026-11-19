@@ -50,6 +50,14 @@ export const when = (iso: string) =>
   new Date(iso).toLocaleString("en-IN", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 export const clock = (at: string | number) => new Date(at).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
 
+/** wa.me link to message one buyer about their order (staff only; null without a 10-digit phone, e.g. demo shops). */
+export function waBuyer(phone: string | null, o: { shop: string; buyer: string; orderNo: number | null; item: string; variant: string; amount?: string; orderId: string }): string | null {
+  if (!phone || !/^[6-9]\d{9}$/.test(phone)) return null;
+  const link = `${typeof location === "undefined" ? "" : location.origin}/o/${o.orderId}`;
+  const text = `Hi ${o.buyer}, this is ${o.shop} about your Dibs order${o.orderNo != null ? ` #${o.orderNo}` : ""}: ${o.item} (${o.variant})${o.amount ? `, ${o.amount}` : ""}. Your order page: ${link}`;
+  return `https://wa.me/91${phone}?text=${encodeURIComponent(text)}`;
+}
+
 export const waLink = (title: string, url: string) =>
   `https://wa.me/?text=${encodeURIComponent(`${title} is dropping on Dibs. First tap wins! ${url}`)}`;
 

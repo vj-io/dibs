@@ -10,7 +10,8 @@ import { cancelPending } from "../../src/lib/server/bots.ts";
 import { fn, sql } from "../../src/lib/server/db.ts";
 import { bus } from "../../src/lib/server/mockbus.ts";
 import { drainOutbox } from "../../src/lib/server/outbox.ts";
-import { startTry, type TryStart } from "../../src/lib/server/sandbox.ts";
+import { type TryStart } from "../../src/lib/server/sandbox.ts";
+import { startTryRetry as startTry } from "./helpers.ts";
 import { BLOCKED_TEXT, handlePreMessage, handleRoomText, handleWebhook, roomTexts, type TextDeps } from "../../src/lib/server/webhook.ts";
 
 const creds = { appKey: "test-key", appSecret: "test-secret" };

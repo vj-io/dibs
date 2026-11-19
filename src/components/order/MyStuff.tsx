@@ -4,6 +4,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/client/api";
+import { useSlow, withTimeout } from "@/lib/client/hooks";
+import { StillConnecting } from "@/components/sale/StillConnecting";
 import type { MeOrder, MyAccount } from "@/lib/types";
 import {
   AppHeader, BottomSheet, Button, Countdown, EmptyState, Footer, Icon, LinkButton, Price, Skeleton, StatePill, useToast,
@@ -14,12 +16,13 @@ export function MyStuff() {
   const [acc, setAcc] = useState<MyAccount | "none" | "error" | null>(null);
   const [del, setDel] = useState(false);
   const [busy, setBusy] = useState(false);
+  const slow = useSlow(6000);
   const [deleted, setDeleted] = useState<{ released: number; left: number; kept: number } | null>(null);
 
   const load = useCallback(() => {
     // ask who we are first: a visitor who never joined gets the empty state without a 401 in the console
-    api("GET /api/buyer/me")
-      .then((r) => (r.buyer ? api("GET /api/me").then(setAcc) : setAcc("none")))
+    withTimeout(api("GET /api/buyer/me"), 12_000)
+      .then((r) => (r.buyer ? withTimeout(api("GET /api/me"), 12_000).then(setAcc) : setAcc("none")))
       .catch((e) => setAcc(e instanceof ApiError && e.status === 401 ? "none" : "error"));
   }, []);
   useEffect(() => { load(); }, [load]);
@@ -48,7 +51,7 @@ export function MyStuff() {
             {deleted.kept ? `; ${deleted.kept} order${deleted.kept === 1 ? "" : "s"} you marked paid stay with the seller to settle` : ""}.
           </p>
         )}
-        {acc === null && <div aria-busy="true" className="flex flex-col gap-3"><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /></div>}
+        {acc === null && <div aria-busy="true" className="flex flex-col gap-3">{slow && <StillConnecting what="your account" onRetry={load} />}<Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /></div>}
         {acc === "error" && <EmptyState icon="warning" title="Couldn't load your stuff" body="Check your connection." action={<Button variant="ghost" onClick={load}>Try again</Button>} />}
         {acc === "none" && (
           <EmptyState icon="bag" title="Nothing here yet"

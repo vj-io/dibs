@@ -27,8 +27,20 @@ function record(kind: string, ok: boolean, code: string, ms: number) {
   ring.push({ kind, ok, code, ms, at: Date.now() });
   if (ring.length > 100) ring.shift();
   if (!healthTable || !process.env.DATABASE_URL) return;
-  sql`insert into health_events (kind, ok, code, ms) values (${kind}, ${ok}, ${code}, ${ms})`
-    .catch((e: { code?: string }) => { if (e?.code === "42P01") healthTable = false; });
+  // One insert per Server API call held pooler connections for over a minute in a tap burst (docs/perf.md).
+  // Rows are buffered and written in one statement: at once for a failure, otherwise every 25 rows or 5 s.
+  pending.push({ kind, ok, code, ms });
+  if (!ok || pending.length >= 25 || Date.now() - lastFlush > 5000) flushHealth();
+}
+const pending: { kind: string; ok: boolean; code: string; ms: number }[] = [];
+let lastFlush = Date.now(), flushing = false;
+function flushHealth() {
+  if (flushing || !pending.length) return;
+  flushing = true; lastFlush = Date.now();
+  const rows = pending.splice(0, 200);
+  sql`insert into health_events ${sql(rows, "kind", "ok", "code", "ms")}`
+    .catch((e: { code?: string }) => { if (e?.code === "42P01") healthTable = false; })
+    .finally(() => { flushing = false; });
 }
 
 type Reply = { code?: number; result?: Record<string, unknown>; errorMessage?: string };
@@ -137,6 +149,11 @@ const firstId = (b: Reply) => (b.result?.messageIds as { messageId: string }[] |
 // ------------------------------------------------------------------ open channel (sale room)
 
 const ROOM_EXISTS = 23435;
+/**
+ * 23410 = the open channel does not exist (destroyed after its drop ended). Nothing can be delivered there and a
+ * retry will never succeed, so cards, metadata and counts for a gone room count as done, not as failures.
+ */
+const ROOM_GONE = 23410;
 /** Create the open channel (idempotent). Kept alive for 7 days of inactivity; destroyRoom ends it earlier. */
 export async function ensureRoom(channelId: string): Promise<void> {
   await call("room_create", "/v4/open-channel/create", { channelId, destroyType: 0, ttlMinutes: 10080 }, [ROOM_EXISTS]);
@@ -154,9 +171,9 @@ export async function sendRoom(channelId: string, fromUserId: string, w: Wire, p
   if (fromUserId === BOT_ID) await ensureBot();
   const body = { fromUserId, toChannelIds: [channelId], ...encode(w), shouldPersist: persist ? 1 : 0, isEchoToSender: 0 };
   try {
-    return firstId(await call("room_send", "/v4/open-channel/message/send", { ...body, priority: PRIORITY[priority] }));
+    return firstId(await call("room_send", "/v4/open-channel/message/send", { ...body, priority: PRIORITY[priority] }, [ROOM_GONE]));
   } catch (e) {
-    if (e instanceof NexconnError && e.code === "1009" && priority !== "normal") return firstId(await call("room_send", "/v4/open-channel/message/send", body));
+    if (e instanceof NexconnError && e.code === "1009" && priority !== "normal") return firstId(await call("room_send", "/v4/open-channel/message/send", body, [ROOM_GONE]));
     throw e;
   }
 }
@@ -164,12 +181,12 @@ export async function sendRoom(channelId: string, fromUserId: string, w: Wire, p
 /** Server-owned metadata (owner dibs_bot), never auto-deleted. Needs the Console metadata service (else 23426). */
 export async function setRoomMeta(channelId: string, metadata: Record<string, string>): Promise<void> {
   await ensureBot();
-  await call("room_meta", "/v4/open-channel/metadata/batch/set", { channelId, metadataOwnerId: BOT_ID, metadata, shouldAutoDelete: 0 });
+  await call("room_meta", "/v4/open-channel/metadata/batch/set", { channelId, metadataOwnerId: BOT_ID, metadata, shouldAutoDelete: 0 }, [ROOM_GONE]);
 }
 
 /** Participant count as the service reports it (it may lag behind users who dropped). */
 export async function roomCount(channelId: string): Promise<number> {
-  const b = await call("room_get", "/v4/open-channel/get", { channelId });
+  const b = await call("room_get", "/v4/open-channel/get", { channelId }, [ROOM_GONE]);
   return Number(b.result?.participantCount ?? 0);
 }
 
@@ -248,6 +265,46 @@ export const CHANNEL_TYPE = { direct: 1, group: 3, room: 4, system: 6, community
 export async function deleteMessage(p: { channelType: keyof typeof CHANNEL_TYPE; channelId: string; messageId: string; fromUserId: string; sentAt?: number }): Promise<void> {
   await call("msg_delete", "/v4/message/delete", {
     fromUserId: p.fromUserId, channelType: CHANNEL_TYPE[p.channelType], channelId: p.channelId, messageId: p.messageId,
+    ...(p.sentAt ? { sentAt: p.sentAt } : {}),
+  });
+}
+
+// ------------------------------------------------------------------ community channel (shop club, FEATURE_COMMUNITY)
+// Paths from the server SDK api.ts (community-channel/*); codes from scripts/club-poc.ts probe (live, 2026-11-19).
+
+export const CLUB_SUBS = ["drops", "chat", "reviews"] as const;
+export type ClubSub = (typeof CLUB_SUBS)[number];
+
+/** Creates the community (first member dibs_bot) and its three public subchannels. Idempotent: a repeat create returns 0 (live). */
+export async function ensureClub(channelId: string, name: string): Promise<void> {
+  await ensureBot();
+  await call("club_create", "/v4/community-channel/create", { userId: BOT_ID, channelId, name: name.slice(0, 64) });
+  for (const subchannelId of CLUB_SUBS) {
+    await call("club_sub", "/v4/community-channel/subchannel/create", { channelId, subchannelId, channelVisibility: 0 });
+  }
+}
+
+export const joinClub = (channelId: string, userId: string) =>
+  call("club_join", "/v4/community-channel/join", { userId, channelId }).then(() => {});
+export const leaveClub = (channelId: string, userId: string) =>
+  call("club_leave", "/v4/community-channel/leave", { userId, channelId }).then(() => {});
+export const dismissClub = (channelId: string) => call("club_dismiss", "/v4/community-channel/dismiss", { channelId }).then(() => {});
+
+/**
+ * Sends into one subchannel, stored. The service accepts a send from a non-member (live), so membership is checked
+ * by our routes. Server history (/history-message/list) is off on this plan (1009), so the club keeps its own record.
+ */
+export async function sendClub(channelId: string, sub: ClubSub, w: Wire, from = BOT_ID): Promise<string | null> {
+  if (from === BOT_ID) await ensureBot();
+  return firstId(await call("club_send", "/v4/community-channel/message/send", {
+    fromUserId: from, toChannelIds: [channelId], subchannelId: sub, ...encode(w), shouldPersist: 1,
+  }));
+}
+
+/** Recalls one club message for everyone (scam shield on club chat). */
+export async function deleteClubMessage(p: { channelId: string; sub: ClubSub; messageId: string; fromUserId: string; sentAt?: number }): Promise<void> {
+  await call("msg_delete", "/v4/message/delete", {
+    fromUserId: p.fromUserId, channelType: CHANNEL_TYPE.community, channelId: p.channelId, subchannelId: p.sub, messageId: p.messageId,
     ...(p.sentAt ? { sentAt: p.sentAt } : {}),
   });
 }

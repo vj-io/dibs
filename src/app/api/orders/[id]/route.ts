@@ -10,6 +10,8 @@ import { enqueue, orderAccess, sweep } from "@/lib/server/queries";
 import type { OrderView } from "@/lib/types";
 import { upiLink } from "@/lib/upi";
 
+const DEMO_PAY = "Dibs demo: no real payment"; // same text as the DB:Pay trigger in 0009
+
 export const dynamic = "force-dynamic";
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -71,7 +73,9 @@ export const GET = route("GET /api/orders/:id", async (req: Request, ctx: Ctx) =
     drop: { id: o.drop_id, code: r.drop_code, title: r.drop_title, isSandbox: r.drop_sandbox },
     shop: { id: o.shop_id, name: r.shop_name, slug: r.shop_slug, supportWhatsapp: r.support_whatsapp },
     payment: { upiId: r.upi_id, payee: r.payee, amountPaise: amount,
-      upiLink: r.upi_id ? upiLink({ upiId: r.upi_id, payee: r.payee, amountPaise: amount, orderNo: o.order_no }) : null },
+      // a demo shop's card is never payable (demo@upi could be a stranger's): plain text instead of a upi:// link
+      upiLink: r.drop_sandbox ? DEMO_PAY : r.upi_id ? upiLink({ upiId: r.upi_id, payee: r.payee, amountPaise: amount, orderNo: o.order_no }) : null,
+      demo: r.drop_sandbox },
     buyer: a.as === "staff" ? { displayName: r.buyer_name, phone: r.drop_sandbox ? null : r.phone /* demo sellers are anonymous */ } : { displayName: r.buyer_name },
     assignedTo: r.staff_id ? { staffId: r.staff_id, displayName: r.staff_name! } : null,
     nexconnGroupId: o.nexconn_group_id,

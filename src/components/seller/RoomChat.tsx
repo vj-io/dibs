@@ -82,7 +82,7 @@ export function RoomChat({ dropId, msgs, send, ownerIds, bans, names, onChanged,
               {menu === m.id && (
                 <div className="mt-2 flex flex-wrap gap-2">
                   <Button size="sm" variant="ghost" icon="pause" busy={busy === `${m.from}:mute`} busyLabel="Muting…" onClick={() => moderate(m.from, "mute", name)}>Mute 10 min</Button>
-                  <Button size="sm" variant="danger" icon="lock" busy={busy === `${m.from}:ban`} busyLabel="Banning…" onClick={() => moderate(m.from, "ban", name)}>Ban</Button>
+                  <Button size="sm" variant="danger" icon="lock" busy={busy === `${m.from}:ban`} busyLabel="Banning…" onClick={() => { if (confirm(`Ban ${name} from all of this shop's drops? You can unban them later.`)) void moderate(m.from, "ban", name); }}>Ban {name}</Button>
                   {ban && <Button size="sm" variant="ghost" icon="check" busy={busy === `${m.from}:unban`} busyLabel="Lifting…" onClick={() => moderate(m.from, "unban", name)}>Unban</Button>}
                 </div>
               )}

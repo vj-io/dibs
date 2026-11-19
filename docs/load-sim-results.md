@@ -265,3 +265,69 @@ Claim results: waitlist_full 98, waitlisted 200, won 2. Rate-limited (429): 0. E
 | Orders = units | PASS | 2 orders |
 | Every tap got a definite result (no 5xx, no timeouts) | PASS | 300/300 definite, errors {} |
 | No rate-limited (429) responses | PASS | 0 responses |
+
+## 2026-11-19T06:35:21.388Z · deployed target
+
+- Target: https://tapdibs.vercel.app
+- Git commit: 74e173f
+- Shape: 400 buyers, 300 claim taps at uniformly random offsets inside 500 ms on one variant with 2 units, 100 viewers each fetching drop state once. Waitlist cap 200.
+- Burst spread achieved: first to last claim send 526 ms (window 500 ms)
+- Run time: 86.3 s including setup, warm-up and verification (before cleanup)
+- The target must share SESSION_SECRET and the database with the machine running this script (production does); sessions are minted locally, so there are no join calls.
+- Latencies are client-observed from one laptop, not from the buyers' network, and include TLS and connection set-up for each simulated buyer.
+
+| Request | n | min ms | median ms | p95 ms | p99 ms | max ms |
+|---|---|---|---|---|---|---|
+| POST /api/claims (all taps) | 300 | 1689 | 29999 | 30001 | 30001 | 30002 |
+| winning taps only | 2 | 1689 | 1689 | 1690 | 1690 | 1690 |
+| GET /api/drops/:id/state (viewers) | 100 | 1829 | 30000 | 30001 | 30004 | 30005 |
+
+Server-side `ms` (milliseconds after the item went live, server clock) for the 2 winners: 35277, 35183
+
+Warm-up (separate drop, before the burst): state cold 405 ms (200); state warm 171 ms (200); claim cold 241 ms (won); claim warm 1 288 ms (waitlisted); claim warm 2 30003 ms (timeout)
+
+Claim results: http_500 12, timeout 152, waitlisted 134, won 2. Rate-limited (429): 0. Errors (5xx, timeouts, network): {"HTTP 500":12,"timeout":207}.
+
+| Invariant (checked in the database) | Result | Detail |
+|---|---|---|
+| Zero double sells: held claims on the variant = units | PASS | 2 held / 2 units |
+| Winners reported by the API = units | PASS | 2 won responses |
+| Stock available = 0, never negative (total 2) | PASS | available 0, total 2 |
+| Waitlisted = min(waitlist_max, taps - units), positions 1..n unique and in committed_at order | FAIL | 151 waitlisted, expected 200, positions MISMATCH |
+| No buyer has two active claims on the item | PASS | 0 buyers |
+| Orders = units | PASS | 2 orders |
+| Every tap got a definite result (no 5xx, no timeouts) | FAIL | 136/300 definite, errors {"HTTP 500":12,"timeout":207} |
+| No rate-limited (429) responses | PASS | 0 responses |
+
+## 2026-11-19T06:37:20.658Z · deployed target
+
+- Target: https://tapdibs.vercel.app
+- Git commit: 74e173f
+- Shape: 400 buyers, 300 claim taps at uniformly random offsets inside 500 ms on one variant with 2 units, 100 viewers each fetching drop state once. Waitlist cap 200.
+- Burst spread achieved: first to last claim send 574 ms (window 500 ms)
+- Run time: 56.3 s including setup, warm-up and verification (before cleanup)
+- The target must share SESSION_SECRET and the database with the machine running this script (production does); sessions are minted locally, so there are no join calls.
+- Latencies are client-observed from one laptop, not from the buyers' network, and include TLS and connection set-up for each simulated buyer.
+
+| Request | n | min ms | median ms | p95 ms | p99 ms | max ms |
+|---|---|---|---|---|---|---|
+| POST /api/claims (all taps) | 300 | 702 | 30001 | 30005 | 30015 | 30019 |
+| winning taps only | 2 | 702 | 702 | 710 | 710 | 710 |
+| GET /api/drops/:id/state (viewers) | 100 | 2978 | 30001 | 30005 | 30008 | 30019 |
+
+Server-side `ms` (milliseconds after the item went live, server clock) for the 2 winners: 6985, 7167
+
+Warm-up (separate drop, before the burst): state cold 493 ms (200); state warm 489 ms (200); claim cold 1053 ms (won); claim warm 1 296 ms (waitlisted); claim warm 2 1099 ms (waitlisted)
+
+Claim results: timeout 281, waitlisted 17, won 2. Rate-limited (429): 0. Errors (5xx, timeouts, network): {"timeout":380}.
+
+| Invariant (checked in the database) | Result | Detail |
+|---|---|---|
+| Zero double sells: held claims on the variant = units | PASS | 2 held / 2 units |
+| Winners reported by the API = units | PASS | 2 won responses |
+| Stock available = 0, never negative (total 2) | PASS | available 0, total 2 |
+| Waitlisted = min(waitlist_max, taps - units), positions 1..n unique and in committed_at order | FAIL | 32 waitlisted, expected 200, positions MISMATCH |
+| No buyer has two active claims on the item | PASS | 0 buyers |
+| Orders = units | PASS | 2 orders |
+| Every tap got a definite result (no 5xx, no timeouts) | FAIL | 19/300 definite, errors {"timeout":380} |
+| No rate-limited (429) responses | PASS | 0 responses |

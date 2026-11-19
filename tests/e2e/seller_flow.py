@@ -7,7 +7,7 @@ buyer says paid -> desk "Says paid" -> received -> shipped -> dashboard 1 paid /
 chat -> End drop. Screenshots go to .shots/seller/<size>/. Fails on console errors or sideways scroll.
 The shop and buyers it made are deleted at the end (node + postgres, .env.local).
 """
-import argparse, json, os, struct, subprocess, sys, time, uuid, zlib
+import argparse, json, os, re, struct, subprocess, sys, time, uuid, zlib
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect, Page
 
@@ -75,7 +75,7 @@ class Run:
         page.goto(base + "/seller/drops")
         expect(page).to_have_url(base + "/seller")
         self.ok("no session: /seller/drops redirects to /seller")
-        expect(page.get_by_role("button", name="Send my code")).to_be_visible()
+        expect(page.get_by_role("tab", name="Create account")).to_be_visible()
         assert "testEmail" not in page.content()
         self.shot(page, "01-sign-in")
         r = self.api(page, "POST", "/api/seller/session", {"testEmail": f"e2e-{tag}@dibs.test"})
@@ -93,11 +93,13 @@ class Run:
         page.get_by_label("UPI ID").fill("meera@upi")
         page.get_by_label("Payee name").fill("Meera Jewels")
         page.get_by_role("button", name="Create my shop").click()
-        page.wait_for_url(base + "/seller/products")
+        page.wait_for_url(base + "/seller/start")
         me = self.api(page, "GET", "/api/seller/me")["body"]["me"]
         self.shop_ids.append(me["shop"]["id"])
         slug = me["shop"]["slug"]
-        self.ok("shop created through the UI form; lands on /seller/products")
+        self.ok("shop created through the UI form; lands on the first-run checklist")
+        page.get_by_role("link", name="Products").click()
+        page.wait_for_url(base + "/seller/products")
 
         # 3. product with two sizes through the editor
         page.get_by_role("button", name="Add your first piece").click()
@@ -164,7 +166,7 @@ class Run:
 
         # 7. cancel the hold from the ledger -> the waitlisted buyer is promoted
         ledger.get_by_role("button", name="Cancel hold for Priya S.").click()
-        page.get_by_role("dialog").get_by_role("button", name="Cancel hold").click()
+        page.get_by_role("dialog").get_by_role("button", name="Cancel Priya S.'s hold").click()
         promoted = ledger.locator('[data-state="held"]', has_text="Rohan S.")
         expect(promoted).to_be_visible()
         expect(promoted).to_contain_text("from waitlist")
@@ -211,8 +213,8 @@ class Run:
         page.get_by_role("link", name="Dashboard").click()
         expect(page.get_by_test_id("dash-paid")).to_have_text("1")
         expect(page.get_by_test_id("dash-value")).to_have_text("₹1,450")
-        expect(page.get_by_test_id("dash-viewers")).to_have_text("not measured")
-        self.ok("dashboard: 1 paid order worth ₹1,450; viewers 'not measured' in mock mode")
+        expect(page.get_by_test_id("dash-viewers")).to_have_count(0)
+        self.ok("dashboard: 1 paid order worth ₹1,450; no viewers tile in mock mode (not measured)")
         self.shot(page, "12-dashboard")
 
         # 12. shop settings, then End drop
@@ -244,16 +246,162 @@ class Run:
         subprocess.run(["node", "--env-file=.env.local", "--input-type=module", "-e", js, json.dumps([self.shop_ids, self.buyer_ids])], cwd=ROOT, check=False)
 
 
+class PwRun(Run):
+    """Password account (no email), the first-run wizard, the share kit, rehearsal link, invite link, password sign-in.
+    Screenshots go to .shots/seller2/<size>/. The Auth user is deleted at the end (Admin API)."""
+
+    def __init__(self, base, size, photo):
+        super().__init__(base, size, photo)
+        self.shots = ROOT / ".shots" / "seller2" / size
+        self.shots.mkdir(parents=True, exist_ok=True)
+        self.emails: list[str] = []
+
+    def flow(self, p, page: Page):
+        base, tag = self.base, uuid.uuid4().hex[:6]
+        # the dev server has no proxy: a fake client IP per run keeps the per-IP sign-up limit per run
+        page.context.set_extra_http_headers({"X-Forwarded-For": f"10.9.{int(tag[:2], 16)}.{int(tag[2:4], 16) or 1}"})
+        email = f"e2e-pw-{tag}@dibs.test"
+        self.emails.append(email)
+
+        # 1. create account: tabs, inline validation, show/hide password
+        page.goto(base + "/seller")
+        tab = page.get_by_role("tab", name="Create account")
+        expect(tab).to_have_attribute("aria-selected", "true")
+        expect(page.get_by_role("link", name="Try the seller demo instead")).to_have_attribute("href", "/try?role=seller")
+        self.shot(page, "01-create-account")
+        page.get_by_role("button", name="Create my account").click()
+        expect(page.get_by_text("Your name, so your team knows who you are.")).to_be_visible()
+        expect(page.get_by_text("Enter your email address.")).to_be_visible()
+        expect(page.get_by_text("Enter a password.")).to_be_visible()
+        page.get_by_label("Your name").fill("Meera")
+        page.get_by_label("Email").fill(email)
+        page.get_by_label("Password", exact=True).fill("short")
+        expect(page.get_by_text("Use at least 8 characters.")).to_be_visible()
+        self.shot(page, "02-validation")
+        page.get_by_label("Password", exact=True).fill("e2e password 123")
+        page.get_by_role("button", name="Show password").click()
+        expect(page.get_by_label("Password", exact=True)).to_have_attribute("type", "text")
+        page.get_by_role("button", name="Hide password").click()
+        expect(page.get_by_label("Password", exact=True)).to_have_attribute("type", "password")
+        self.ok("create account: inline validation and show/hide password")
+        page.get_by_role("button", name="Create my account").click()
+        expect(page.get_by_text("Set up your shop")).to_be_visible()
+        expect(page.get_by_label("Your name")).to_have_value("Meera")
+        self.ok("password account created with no email; shop form next, name carried over")
+
+        # 2. shop -> wizard step 1: payment details with the live preview and the ₹1 name-check QR
+        page.get_by_label("Shop name").fill(f"Pw Jewels {tag}")
+        page.get_by_role("button", name="Create my shop").click()
+        page.wait_for_url(base + "/seller/start")
+        me = self.api(page, "GET", "/api/seller/me")["body"]["me"]
+        self.shop_ids.append(me["shop"]["id"])
+        expect(page.get_by_role("button", name="Step 1 of 3 Payment details")).to_have_attribute("aria-current", "step")
+        page.get_by_label("UPI ID").fill("meera@okaxis")
+        page.get_by_label("Payee name").fill("Meera Jewels")
+        expect(page.get_by_test_id("pay-preview")).to_contain_text("Pay ₹1,450 to Meera Jewels (meera@okaxis)")
+        expect(page.get_by_test_id("name-check").get_by_role("img")).to_be_visible()
+        self.shot(page, "03-wizard-payment")
+        page.get_by_role("button", name="Save and continue").click()
+        self.ok("wizard 1: payment preview + name-check QR, saved")
+
+        # 3. step 2: sample pieces in, out, in again
+        page.get_by_role("button", name="Add 3 sample pieces to edit").click()
+        expect(page.get_by_test_id("product-list")).to_contain_text("Sample: Kundan choker")
+        self.shot(page, "04-wizard-samples")
+        page.get_by_role("button", name="Remove sample pieces").click()
+        expect(page.get_by_role("button", name="Add 3 sample pieces to edit")).to_be_visible()
+        expect(page.get_by_test_id("product-list")).to_have_count(0)
+        page.get_by_role("button", name="Add 3 sample pieces to edit").click()
+        expect(page.get_by_test_id("product-list").get_by_role("listitem")).to_have_count(3)
+        self.ok("wizard 2: 3 labelled sample pieces added, removed in one tap, added again")
+        page.get_by_role("button", name="Continue").click()
+
+        # 4. step 3: drop with a preset -> share kit
+        page.get_by_label("Drop title").fill("Diwali Edit")
+        page.get_by_label("In 10 minutes").check()
+        self.shot(page, "05-wizard-drop")
+        page.get_by_role("button", name="Create drop").click()
+        kit = page.get_by_test_id("share-kit")
+        expect(kit).to_be_visible()
+        expect(kit.get_by_test_id("announce-en")).to_contain_text("Diwali Edit by Pw Jewels")
+        expect(kit.get_by_test_id("announce-hi")).to_contain_text("Jo pehle tap karega")
+        qr = kit.get_by_role("link", name="Download QR (PNG)")
+        expect(qr).to_have_attribute("href", re.compile(r"^data:image/png;base64,"))
+        expect(kit.get_by_role("link", name="Rehearse this drop")).to_have_attribute("href", "/try?role=seller")
+        expect(kit.get_by_role("link", name="Rehearse this drop")).to_have_attribute("target", "_blank")
+        expect(kit.get_by_test_id("run-checklist")).to_contain_text("Press End drop")
+        self.shot(page, "06-share-kit")
+        self.ok("wizard 3: drop from a preset; share kit: EN + Hinglish texts, QR PNG, rehearse link, checklist")
+
+        # 5. console of the scheduled drop carries the kit too
+        page.get_by_role("link", name="Open the live console").click()
+        page.wait_for_url("**/seller/drops/*")
+        expect(page.get_by_text("Share kit and checklist")).to_be_visible()
+        self.shot(page, "07-console-scheduled")
+
+        # 6. invite link from the shop page
+        page.get_by_role("link", name="Shop").click()
+        page.get_by_label("Their name").fill("Ravi")
+        page.get_by_label("Their email").fill(f"e2e-staff-{tag}@dibs.test")
+        page.get_by_role("button", name="Invite").click()
+        expect(page.get_by_test_id("invite-link")).to_contain_text("/seller?invite=")
+        self.shot(page, "08-invite-link")
+        link = page.get_by_test_id("invite-link").locator("p.font-mono").inner_text()
+        link = base + link[link.index("/seller?invite="):]  # APP_URL in .env.local may name another port
+        self.ok("invite shows a copyable link")
+
+        # 7. sign out; wrong password; right password; the invite page in a fresh context
+        page.get_by_role("button", name="Sign out").click()
+        page.wait_for_url(base + "/seller")
+        page.get_by_role("tab", name="Sign in").click()
+        page.get_by_label("Email").fill(email)
+        page.get_by_label("Password", exact=True).fill("not my password")
+        page.get_by_role("button", name="Sign in").click()
+        expect(page.get_by_text("That email and password don't match.")).to_be_visible()
+        expect(page.get_by_role("button", name="Email me a code instead")).to_be_visible()
+        self.shot(page, "09-sign-in-wrong")
+        # the refused login is the expected 401, not a page error
+        self.errors = [e for e in self.errors if "/api/seller/login" not in e and "status of 401" not in e]
+        page.get_by_label("Password", exact=True).fill("e2e password 123")
+        page.get_by_role("button", name="Sign in").click()
+        page.wait_for_url(base + "/seller/drops")
+        self.ok("sign out, wrong password refused, password sign-in lands on drops")
+        ctx2 = page.context.browser.new_context(viewport={"width": self.w, "height": self.h})
+        p2 = ctx2.new_page()
+        p2.on("console", lambda m: m.type == "error" and self.errors.append(f"{p2.url}: {m.text}"))
+        p2.goto(link)
+        expect(p2.get_by_role("heading", name=f"Join Pw Jewels {tag}")).to_be_visible()
+        expect(p2.get_by_test_id("invite-email")).to_have_text(f"e2e-staff-{tag}@dibs.test")
+        self.shot(p2, "10-invite-page")
+        self.emails.append(f"e2e-staff-{tag}@dibs.test")
+        p2.get_by_label("Choose a password").fill("staff password 1")
+        p2.get_by_role("button", name="Join the team").click()
+        p2.wait_for_url(base + "/seller/drops")
+        expect(p2.get_by_text("Ravi · Team")).to_be_visible()
+        self.ok("invite link joins the team with a password, no email")
+        ctx2.close()
+
+    def cleanup(self):
+        super().cleanup()
+        js = ("const [u, k] = [process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY]; const want = JSON.parse(process.argv[1]);"
+              "const h = { apikey: k, Authorization: `Bearer ${k}` };"
+              "const r = await (await fetch(`${u}/auth/v1/admin/users?per_page=1000`, { headers: h })).json();"
+              "for (const x of r.users ?? []) if (want.includes(x.email)) await fetch(`${u}/auth/v1/admin/users/${x.id}`, { method: 'DELETE', headers: h });")
+        subprocess.run(["node", "--env-file=.env.local", "--input-type=module", "-e", js, json.dumps(self.emails)], cwd=ROOT, check=False)
+
+
 def main():
     a = argparse.ArgumentParser()
     a.add_argument("--base", default="http://localhost:3100")
     a.add_argument("--size", default="both")
     a.add_argument("--photo", action="store_true", help="also upload a photo to Supabase Storage")
+    a.add_argument("--flow", default="both", choices=["main", "password", "both"], help="main = code-path seller flow, password = accounts + wizard")
     o = a.parse_args()
     failed = False
-    for size in (["1280x800", "360x740"] if o.size == "both" else [o.size]):
-        print(f"== {size}", flush=True)
-        r = Run(o.base, size, o.photo)
+    flows = {"main": [Run], "password": [PwRun], "both": [Run, PwRun]}[o.flow]
+    for size, cls in [(s, c) for c in flows for s in (["1280x800", "360x740"] if o.size == "both" else [o.size])]:
+        print(f"== {cls.__name__} {size}", flush=True)
+        r = cls(o.base, size, o.photo)
         try:
             r.run()
         except Exception as e:  # report and keep the other size going

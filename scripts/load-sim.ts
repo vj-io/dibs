@@ -1,6 +1,9 @@
 // Synthetic load simulation for Dibs: N buyers, T claim taps inside a short window on one variant, against a deployed API.
 // Usage: node --env-file=.env.local scripts/load-sim.ts --base https://tapdibs.vercel.app [--buyers 400] [--taps 300]
-//          [--window 500] [--units 2] [--timeout 30] [--keep]      |      node --env-file=.env.local scripts/load-sim.ts --cleanup <slug>
+//          [--window 500] [--units 2] [--timeout 30] [--keep] [--scenario burst|realistic]
+//        node --env-file=.env.local scripts/load-sim.ts --cleanup <slug>
+// Scenarios: burst (default) = every tap on one variant, waitlist cap 200. realistic = 400 buyers, 120 taps spread over
+// 3 s across 3 variants (S, M, L) with 2 units each, the shop's default waitlist cap of 20; flags still override.
 // Setup and verification go straight to Postgres (DATABASE_URL_SESSION); the taps go through the HTTP API with
 // session cookies minted here (same jose HS256 cookie as src/lib/server/session.ts), so the target must share
 // SESSION_SECRET and the database with this machine's .env.local (production does). Everything is flagged sandbox
@@ -18,13 +21,22 @@ const { values: a } = parseArgs({
   options: {
     base: { type: "string" }, buyers: { type: "string", default: "400" }, taps: { type: "string", default: "300" },
     window: { type: "string", default: "500" }, units: { type: "string", default: "2" }, keep: { type: "boolean", default: false },
-    cleanup: { type: "string" }, timeout: { type: "string", default: "30" },
+    cleanup: { type: "string" }, timeout: { type: "string", default: "30" }, scenario: { type: "string", default: "burst" },
   },
 });
 const need = (k: string) => { const v = process.env[k]; if (!v) throw new Error(`${k} is not set (run with --env-file=.env.local)`); return v; };
 const db = postgres(need("DATABASE_URL_SESSION"), { ssl: "require", max: 3, onnotice: () => {} });
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const WAITLIST_MAX = 200; // the schema maximum, so 300 taps on 2 units also exercises waitlist_full
+if (!["burst", "realistic"].includes(a.scenario!)) throw new Error("--scenario is burst or realistic");
+const realistic = a.scenario === "realistic";
+if (realistic) { // defaults for the scenario; flags given on the command line still win
+  const given = (k: string) => process.argv.includes("--" + k);
+  if (!given("taps")) a.taps = "120";
+  if (!given("window")) a.window = "3000";
+}
+// burst: the schema maximum, so 300 taps on 2 units also exercises waitlist_full; realistic: the shop default
+const WAITLIST_MAX = realistic ? 20 : 200;
+const KEYS = realistic ? ["S", "M", "L"] : ["M"];
 
 /** Deletes one run's rows: the shop (cascades drops, items, claims, orders, outbox ...), its buyers (by run tag), their rate hits. */
 async function cleanup(slug: string) {
@@ -63,7 +75,7 @@ const key = new TextEncoder().encode(need("SESSION_SECRET"));
 const mint = (buyerId: string) =>
   new SignJWT({ kind: "buyer", buyerId }).setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime(`${60 * 60 * 24 * 30}s`).sign(key);
 
-type Rec = { kind: "claim" | "view"; sendMs: number; status: number; ms: number; result: string; serverMs: number | null; claimId: string | null; position: number | null; buyer: number };
+type Rec = { kind: "claim" | "view"; sendMs: number; status: number; ms: number; result: string; serverMs: number | null; srvMs: number | null; claimId: string | null; position: number | null; buyer: number; key: string };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function req(method: "GET" | "POST", path: string, cookie: string, body?: unknown) {
@@ -99,19 +111,21 @@ try {
     values (${slug}, ${"Load sim " + stamp}, 'loadsim@upi', 'Load Sim', 600, 3, ${WAITLIST_MAX}, true, ${"desk_" + slug}) returning id`;
   shopId = shop.id;
   const [owner] = await db`insert into staff (shop_id, role, display_name, email) values (${shop.id}, 'owner', 'Owner', ${slug + "@o.test"}) returning id`;
-  const mk = async (c: string, qty: number, title: string) => {
+  const mk = async (c: string, qty: number, title: string, keys = ["M"]) => {
     const [d] = await db`insert into drops (shop_id, code, title, starts_at, nexconn_channel_id, is_sandbox) values (${shop.id}, ${c}, ${title}, now(), ${"dr_" + c}, true) returning id`;
     const [p] = await db`insert into products (shop_id, title, price_paise, photos) values (${shop.id}, ${title}, 145000, ${["https://x.test/p.jpg"]}) returning id`;
     const [it] = await db`insert into drop_items (drop_id, product_id, position) values (${d.id}, ${p.id}, 1) returning id`;
-    const [pv] = await db`insert into product_variants (product_id, key, label, qty, sort) values (${p.id}, 'M', 'Size M', ${qty}, 0) returning id`;
-    await db`insert into item_stock (drop_item_id, variant_id, total, available) values (${it.id}, ${pv.id}, ${qty}, ${qty})`;
+    for (const [j, k] of keys.entries()) {
+      const [pv] = await db`insert into product_variants (product_id, key, label, qty, sort) values (${p.id}, ${k}, ${"Size " + k}, ${qty}, ${j}) returning id`;
+      await db`insert into item_stock (drop_item_id, variant_id, total, available) values (${it.id}, ${pv.id}, ${qty}, ${qty})`;
+    }
     for (const fnName of ["drop_go_live", "drop_next"]) {
       const [r] = await db.unsafe(`select ${fnName}($1::uuid, $2::uuid) as r`, [d.id, owner.id]);
       if (!r.r.ok) throw new Error(`${fnName}: ${JSON.stringify(r.r)}`);
     }
-    return { dropId: d.id as string, itemId: it.id as string, variantId: pv.id as string };
+    return { dropId: d.id as string, itemId: it.id as string };
   };
-  const main = await mk(code, units, "Load sim drop");
+  const main = await mk(code, units, "Load sim drop", KEYS);
   const warm = await mk(wcode, 1, "Load sim warm-up");
   const rows = Array.from({ length: nBuyers }, (_, i) => ({ name: `Load ${String(i + 1).padStart(3, "0")} ${slug}`, display_name: `Load ${String(i + 1).padStart(3, "0")}`, is_sandbox: true }));
   const ids: string[] = (await db`insert into buyers ${db(rows)} returning id, name`).sort((x, y) => (x.name < y.name ? -1 : 1)).map((r) => r.id);
@@ -135,13 +149,15 @@ try {
   const jobs: Promise<void>[] = [];
   const fire = (i: number, kind: Rec["kind"]) => {
     const offset = Math.random() * windowMs;
+    const key = KEYS[i % KEYS.length]; // taps spread evenly over the variants
     jobs.push(new Promise<void>((done) => setTimeout(async () => {
       const sendMs = performance.now() - base0;
       const r = kind === "claim"
-        ? await req("POST", "/api/claims", cookies[i], { itemId: main.itemId, variantKey: "M" })
+        ? await req("POST", "/api/claims", cookies[i], { itemId: main.itemId, variantKey: key })
         : await req("GET", `/api/drops/${main.dropId}/state`, cookies[i]);
       recs.push({ kind, sendMs, status: r.status, ms: r.ms, result: kind === "claim" ? resultOf(r) : r.err ?? String(r.status),
-        serverMs: typeof r.j.ms === "number" ? r.j.ms : null, claimId: (r.j.claimId as string) ?? null, position: (r.j.position as number) ?? null, buyer: i });
+        serverMs: typeof r.j.ms === "number" ? r.j.ms : null, srvMs: typeof r.j.serverMs === "number" ? r.j.serverMs : null,
+        claimId: (r.j.claimId as string) ?? null, position: (r.j.position as number) ?? null, buyer: i, key });
       done();
     }, base0 - performance.now() + offset)));
   };
@@ -159,9 +175,10 @@ try {
     const [{ n }] = await db`select count(*)::int as n from claims where drop_item_id = ${main.itemId}`;
     still = n === last ? still + 1 : 0; last = n; await sleep(1000);
   }
-  const dbRows = await db`select c.id, c.state, c.buyer_id from claims c where c.drop_item_id = ${main.itemId} order by c.committed_at, c.id`;
+  const dbRows = await db`select c.id, c.state, c.buyer_id, pv.key from claims c join product_variants pv on pv.id = c.variant_id
+                            where c.drop_item_id = ${main.itemId} order by c.committed_at, c.id`;
   const count = (s: string[]) => dbRows.filter((r) => s.includes(r.state)).length;
-  const [stock] = await db`select total, available from item_stock where drop_item_id = ${main.itemId}`;
+  const stocks = await db`select pv.key, s.total, s.available from item_stock s join product_variants pv on pv.id = s.variant_id where s.drop_item_id = ${main.itemId}`;
   const [{ orders }] = await db`select count(*)::int as orders from orders o join claims c on c.id = o.claim_id where c.drop_item_id = ${main.itemId}`;
   const [{ dupes }] = await db`select count(*)::int as dupes from (select buyer_id from claims where drop_item_id = ${main.itemId}
                                  and state in ('held','payment_claimed','waitlisted') group by buyer_id having count(*) > 1) x`;
@@ -172,29 +189,39 @@ try {
   for (const r of recs.filter(bad)) { const k = r.status ? `HTTP ${r.status}` : r.result; errs[k] = (errs[k] ?? 0) + 1; }
   const rl = recs.filter((r) => r.status === 429).length;
   const definite = claims.filter((r) => r.status === 200 && r.result !== "no_result").length;
-  const wantWait = Math.min(WAITLIST_MAX, nTaps - units);
-  const waitRows = dbRows.filter((r) => r.state === "waitlisted");
-  const posById = new Map(claims.filter((r) => r.result === "waitlisted").map((r) => [r.claimId, r.position]));
-  const posOk = waitRows.length === posById.size && waitRows.every((r, i) => posById.get(r.id) === i + 1);
+  // per variant: taps on it, units won, waitlist positions 1..n in committed_at order
+  const per = KEYS.map((k) => {
+    const taps = claims.filter((r) => r.key === k).length;
+    const rows = dbRows.filter((r) => r.key === k);
+    const held = rows.filter((r) => r.state === "held").length;
+    const waitRows = rows.filter((r) => r.state === "waitlisted");
+    const posById = new Map(claims.filter((r) => r.key === k && r.result === "waitlisted").map((r) => [r.claimId, r.position]));
+    const posOk = waitRows.length === posById.size && waitRows.every((r, i) => posById.get(r.id) === i + 1);
+    const st = stocks.find((s) => s.key === k)!;
+    return { k, taps, held, want: Math.min(WAITLIST_MAX, Math.max(0, taps - units)), wait: waitRows.length, posOk, won: claims.filter((r) => r.key === k && r.result === "won").length, st };
+  });
+  const allUnits = units * KEYS.length;
   const held = count(["held"]);
+  const vdetail = (fn: (p: (typeof per)[number]) => string) => per.map((p) => (KEYS.length > 1 ? `${p.k}: ` : "") + fn(p)).join("; ");
   const checks: [string, boolean, string][] = [
-    ["Zero double sells: held claims on the variant = units", held === units && count(["held", "payment_claimed", "paid", "shipped"]) === units, `${held} held / ${units} units`],
-    ["Winners reported by the API = units", (tally.won ?? 0) === units, `${tally.won ?? 0} won responses`],
-    ["Stock available = 0, never negative (total ${units})".replace("${units}", String(units)), stock.available === 0 && stock.total === units, `available ${stock.available}, total ${stock.total}`],
-    ["Waitlisted = min(waitlist_max, taps - units), positions 1..n unique and in committed_at order", waitRows.length === wantWait && posOk, `${waitRows.length} waitlisted, expected ${wantWait}, positions ${posOk ? "ok" : "MISMATCH"}`],
+    ["Zero double sells: held claims per variant = units", per.every((p) => p.held === Math.min(units, p.taps)) && count(["held", "payment_claimed", "paid", "shipped"]) === held, vdetail((p) => `${p.held} held / ${units} units`)],
+    ["Winners reported by the API = units", per.every((p) => p.won === Math.min(units, p.taps)), vdetail((p) => `${p.won} won responses`)],
+    [`Stock available = 0, never negative (total ${units} per variant)`, per.every((p) => p.st.available === Math.max(0, units - p.taps) && p.st.total === units), vdetail((p) => `available ${p.st.available}, total ${p.st.total}`)],
+    ["Waitlisted = min(waitlist_max, taps - units) per variant, positions 1..n unique and in committed_at order", per.every((p) => p.wait === p.want && p.posOk), vdetail((p) => `${p.wait} waitlisted, expected ${p.want}, positions ${p.posOk ? "ok" : "MISMATCH"}`)],
     ["No buyer has two active claims on the item", dupes === 0, `${dupes} buyers`],
-    ["Orders = units", orders === units, `${orders} orders`],
+    ["Orders = units won", orders === held && held === per.reduce((n, p) => n + Math.min(units, p.taps), 0), `${orders} orders, ${allUnits} units`],
     ["Every tap got a definite result (no 5xx, no timeouts)", definite + rl === nTaps && !Object.keys(errs).length, `${definite}/${nTaps} definite, errors ${JSON.stringify(errs)}`],
     ["No rate-limited (429) responses", rl === 0, `${rl} responses`],
   ];
   const winners = claims.filter((r) => r.result === "won").map((r) => r.serverMs).filter((x): x is number => x !== null);
+  const srv = claims.map((r) => r.srvMs).filter((x): x is number => x !== null);
   const local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(new URL(base).hostname);
   const lines = [
     `## ${new Date().toISOString()} · ${local ? "local dev server, not production" : "deployed target"}`,
     "",
     `- Target: ${base}${local ? " (local dev server talking to the remote database; latencies are not meaningful for the product)" : ""}`,
     `- Git commit: ${(() => { try { return execSync("git rev-parse --short HEAD", { cwd: root }).toString().trim(); } catch { return "unknown"; } })()}`,
-    `- Shape: ${nBuyers} buyers, ${nTaps} claim taps at uniformly random offsets inside ${windowMs} ms on one variant with ${units} units, ${nBuyers - nTaps} viewers each fetching drop state once. Waitlist cap ${WAITLIST_MAX}.`,
+    `- Scenario: ${a.scenario}. Shape: ${nBuyers} buyers, ${nTaps} claim taps at uniformly random offsets inside ${windowMs} ms on ${KEYS.length === 1 ? "one variant" : `${KEYS.length} variants (${KEYS.join(", ")}, taps split evenly)`} with ${units} units${KEYS.length > 1 ? " each" : ""}, ${nBuyers - nTaps} viewers each fetching drop state once. Waitlist cap ${WAITLIST_MAX}.`,
     `- Burst spread achieved: first to last claim send ${f(spread)} ms (window ${windowMs} ms)`,
     `- Run time: ${((Date.now() - t0) / 1000).toFixed(1)} s including setup, warm-up and verification (before cleanup)`,
     `- The target must share SESSION_SECRET and the database with the machine running this script (production does); sessions are minted locally, so there are no join calls.`,
@@ -204,6 +231,9 @@ try {
     row("POST /api/claims (all taps)", stats(claims.map((r) => r.ms))),
     ...(winners.length ? [row("winning taps only", stats(claims.filter((r) => r.result === "won").map((r) => r.ms)))] : []),
     ...(views.length ? [row("GET /api/drops/:id/state (viewers)", stats(views.map((r) => r.ms)))] : []),
+    ...(srv.length ? [row("claim server time (serverMs: arrival to response, in the route)", stats(srv))] : []),
+    "",
+    srv.length ? `Client minus server time per claim (network, TLS, routing; median of per-tap differences): ${f(stats(claims.filter((r) => r.srvMs !== null).map((r) => r.ms - r.srvMs!)).median)} ms` : "Server time per claim: not reported by this deployment (no serverMs field)",
     "",
     `Server-side \`ms\` (milliseconds after the item went live, server clock) for the ${winners.length} winners: ${winners.map(f).join(", ") || "-"}`,
     "",

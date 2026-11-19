@@ -12,6 +12,7 @@ const NAV: { href: string; label: string; icon: IconName }[] = [
   { href: "/seller/drops", label: "Drops", icon: "live" },
   { href: "/seller/products", label: "Products", icon: "bag" },
   { href: "/seller/desk", label: "Desk", icon: "chat" },
+  { href: "/seller/club", label: "Club", icon: "bell" },
   { href: "/seller/dashboard", label: "Dashboard", icon: "sparkle" },
   { href: "/seller/shop", label: "Shop", icon: "users" },
   { href: "/health", label: "Health", icon: "shield" },
