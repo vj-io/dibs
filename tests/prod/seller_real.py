@@ -80,6 +80,9 @@ def flow(p):
     seller.route("**/auth/v1/otp**", lambda r: (sent.append(r.request.url.split("?")[0]), r.fulfill(status=200, content_type="application/json", body="{}")))
     seller.on("response", lambda r: "/auth/v1/verify" in r.url and verify.append(r.status))
     seller.goto(BASE + "/seller")
+    # the screen opens on password accounts now; the emailed-code path sits under Sign in
+    seller.get_by_role("tab", name="Sign in").click()
+    seller.get_by_role("button", name="Email me a code instead").click()
     seller.get_by_label("Email").fill(email)
     seller.get_by_role("button", name="Send my code").click()
     expect(seller.get_by_label("One-time code")).to_be_visible()
@@ -102,9 +105,10 @@ def flow(p):
     seller.get_by_label("Payee name").fill("Verify")
     shot(seller, "a3-01-shop-form")
     seller.get_by_role("button", name="Create my shop").click()
-    seller.wait_for_url(BASE + "/seller/products")
+    seller.wait_for_url(re.compile(r"/seller/(products|start|drops)"))  # a new shop may land on the start wizard
     me = api(seller, "GET", "/api/seller/me")["body"]["me"]
     R["created"]["shops"].append(me["shop"]["id"])
+    if "/seller/products" not in seller.url: seller.goto(BASE + "/seller/products")
     step("A3 shop created through the UI", me["shop"]["slug"] == slug, f"slug {me['shop']['slug']}")
 
     seller.get_by_role("button", name="Add your first piece").click()
@@ -232,7 +236,7 @@ def flow(p):
     seller.goto(f"{BASE}/seller/dashboard?drop={drop_id}")
     expect(seller.get_by_test_id("dash-paid")).to_have_text("1")
     expect(seller.get_by_test_id("dash-value")).to_have_text("₹1,450")
-    dash = {k: seller.get_by_test_id(f"dash-{k}").inner_text() for k in ("taps", "holds", "paid", "value", "saves", "median", "viewers")}
+    dash = {k: seller.get_by_test_id(f"dash-{k}").inner_text() for k in ("taps", "holds", "paid", "value", "saves", "median", "viewers") if seller.get_by_test_id(f"dash-{k}").count()}  # the viewers tile is hidden when not measured
     step("A3 dashboard numbers for the drop", True, json.dumps(dash, ensure_ascii=False))
     shot(seller, "a3-11-dashboard")
     seller.goto(f"{BASE}/health")
