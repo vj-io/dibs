@@ -6,7 +6,7 @@ import { api, ApiError } from "@/lib/client/api";
 import { AppHeader, Footer, Highlight, Icon, cx, type IconName } from "@/components/ui";
 
 const CHOICES: { role: "buyer" | "seller"; icon: IconName; title: string; line: string }[] = [
-  { role: "buyer", icon: "tap", title: "Be a buyer", line: "Race 🤖 demo buyers for a piece, get promoted from the waitlist, pay, and win one outright. About 90 seconds." },
+  { role: "buyer", icon: "tap", title: "Be a buyer", line: "Race 🤖 demo buyers for a piece, get promoted from the waitlist, pay, and win one outright. About a minute." },
   { role: "seller", icon: "users", title: "Be the seller", line: "Run the live console: drop pieces, watch taps, holds and waitlists fill, confirm a payment and ship it." },
 ];
 

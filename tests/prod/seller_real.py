@@ -134,7 +134,7 @@ def flow(p):
     seller.get_by_label("Drop title").fill(f"Verify drop {TS}")
     seller.get_by_label("Verify jhumka").check()
     seller.get_by_role("button", name="Create drop").click()
-    expect(seller.get_by_text("Your drop is ready to share")).to_be_visible()
+    expect(seller.get_by_text("Your drop is ready to share").and_(seller.locator(":not(.sr-only)"))).to_be_visible()
     share = seller.get_by_test_id("share-url").first.inner_text().strip()
     step("A3 drop created; share link shown", f"/s/{slug}/d/" in share, share)
     shot(seller, "a3-03-drop-created")
@@ -158,7 +158,7 @@ def flow(p):
     d.get_by_label("Your name").fill("Verify Buyer")
     d.get_by_label("Phone number").fill(f"9{uuid.uuid4().int % 10**9:09d}")
     d.get_by_role("button", name="Join").click()
-    expect(buyer.get_by_text("You're in, Verify B.!")).to_be_visible()
+    expect(buyer.get_by_text("You're in, Verify B.!").and_(buyer.locator(":not(.sr-only)"))).to_be_visible()
     R["created"]["buyers"] += [r["id"] for r in sql("select id from buyers where name = 'Verify Buyer' and created_at > now() - interval '30 minutes'")]
     chips = buyer.get_by_role("group", name="Pick an option").locator("button")
     if chips.count() > 1:
@@ -167,7 +167,7 @@ def flow(p):
     expect(dibs).to_be_enabled()
     t = time.monotonic()
     dibs.click()
-    expect(buyer.get_by_text("You got it!").first).to_be_visible()
+    expect(buyer.get_by_text("You got it!").and_(buyer.locator(":not(.sr-only)")).first).to_be_visible()
     step("A3 buyer taps Dibs -> 'You got it!'", True, f"{time.monotonic() - t:.2f} s after the click")
     shot(buyer, "a3-05-buyer-won")
     t = time.monotonic()
@@ -182,7 +182,7 @@ def flow(p):
     buyer.wait_for_url("**/o/*")
     order_url = buyer.url
     buyer.get_by_role("button", name="I've paid").click()
-    expect(buyer.get_by_text("Payment sent. Your timer is paused")).to_be_visible()
+    expect(buyer.get_by_text("Payment sent. Your timer is paused").and_(buyer.locator(":not(.sr-only)"))).to_be_visible()
     step("A3 order room: I've paid", True)
     shot(buyer, "a3-06-buyer-paid-claim")
 
@@ -194,13 +194,13 @@ def flow(p):
     seller.get_by_role("button", name="Payment received").click()
     seller.get_by_role("button", name="Yes, mark paid").click()
     t = time.monotonic()
-    expect(buyer.get_by_text("Paid · confirmed by")).to_be_visible()
+    expect(buyer.get_by_text("Paid · confirmed by").and_(buyer.locator(":not(.sr-only)"))).to_be_visible()
     step("A3 mark received -> buyer sees 'Paid · confirmed by'", True, f"{time.monotonic() - t:.1f} s")
     seller.get_by_role("button", name="Mark shipped").first.click()
     seller.locator("button[type=submit]", has_text="Mark shipped").click()
     expect(seller.get_by_test_id("group-shipped")).to_contain_text("Verify B.")
     t = time.monotonic()
-    expect(buyer.get_by_text("On its way to you.")).to_be_visible()
+    expect(buyer.get_by_text("On its way to you.").and_(buyer.locator(":not(.sr-only)"))).to_be_visible()
     step("A3 mark shipped -> buyer sees 'Shipped'", True, f"{time.monotonic() - t:.1f} s")
     shot(buyer, "a3-07-buyer-shipped")
     shot(seller, "a3-08-desk")
@@ -220,7 +220,7 @@ def flow(p):
         seen_by_sender = True
     except AssertionError:
         pass
-    expect(buyer.get_by_text(BLOCKED).first).to_be_visible(timeout=30000)
+    expect(buyer.get_by_text(BLOCKED).and_(buyer.locator(":not(.sr-only)")).first).to_be_visible(timeout=30000)
     notice_s = time.monotonic() - t
     expect(msgs.get_by_text(UPI_MSG)).to_have_count(0, timeout=30000)
     gone_s = time.monotonic() - t

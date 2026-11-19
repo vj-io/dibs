@@ -36,7 +36,7 @@ For sellers: sign up with email and password, a three-step start wizard, a share
 
 A scam shield blocks phone numbers, UPI IDs and payment links from non-staff. AI does three helper jobs only: a private one-tap prompt when a buyer types "booked", an answer bot that uses only the shop's FAQ, and unclear scam text. AI never decides who was first, confirms a payment or changes stock.
 
-Try it alone in about 90 seconds at /try: no sign-up, a private room with 40 demo buyers labelled with a robot icon. They tap through the same claim function and never pay; the demo payment reads "Demo shop: nothing to pay".
+Try it alone in about a minute at /try: no sign-up, a private room with 40 demo buyers labelled with a robot icon. They tap through the same claim function and never pay; the demo payment reads "Demo shop: nothing to pay".
 
 Status: no real drop has run yet, so 0 real users. A single warm tap takes about 150 to 220 ms from a laptop; in the 300-tap burst the median was 2.75 s. No phone verification; no video calling.
 ```
