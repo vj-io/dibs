@@ -69,6 +69,7 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
   // versions belong to another drop. Room cards say their drop (dropped below when it isn't this one); as a second
   // line, anything sent before this sandbox drop started is not ours (that also covers the previous visitor's chat).
   const floorRef = useRef(0);
+  const hiddenRef = useRef(new Set<string>());
   const waitsRef = useRef<Set<string>>(new Set());
   const previewRef = useRef(!!preview);
   useEffect(() => {
@@ -145,13 +146,14 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
         const log = dibsDebug().cards; // last cards seen, for tests and debugging
         log.push(`${c.t}${"v" in c ? ` v${c.v}` : ""}${"liveItemId" in c ? ` ${String(c.liveItemId).slice(0, 8)}` : "itemId" in c ? ` ${c.itemId.slice(0, 8)}` : ""}`);
         if (log.length > 60) log.shift();
-        if (c.t === "DB:Hide") { setChat((xs) => xs.filter((x) => x.id !== c.messageId)); return; }
+        // the hide card can arrive before the message it hides (server-sent bot lines): remember the id
+        if (c.t === "DB:Hide") { hiddenRef.current.add(c.messageId); setChat((xs) => xs.filter((x) => x.id !== c.messageId)); return; }
         setState((s) => (s ? applyCard(s, c) : s));
         if (c.t === "DB:Sold" || c.t === "DB:Back" || c.t === "DB:Stock") refreshMe();
         if (c.t === "DB:State" || c.t === "DB:Item") { refreshState(); refreshMe(); }
         return;
       }
-      if (!m.text) return;
+      if (!m.text || hiddenRef.current.has(m.id)) return;
       const line: ChatLine = { id: m.id, from: m.from, fromName: m.fromName, at: m.at, text: m.text };
       setChat((xs) => (xs.some((x) => x.id === m.id) ? xs : [...xs, line].slice(-150)));
     };

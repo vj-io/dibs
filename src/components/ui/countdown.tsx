@@ -21,8 +21,8 @@ export const mmss = (sec: number) => `${String(Math.floor(sec / 60)).padStart(2,
 export function countdownAnnouncement(sec: number): string {
   if (sec <= 0) return "Time is up.";
   if (sec <= 10) return "10 seconds left.";
-  if (sec <= 60) return "1 minute left.";
-  if (sec <= 120) return "2 minutes left.";
+  if (sec <= 60) return "Under 1 minute left.";
+  if (sec <= 120) return "Under 2 minutes left.";
   return "";
 }
 

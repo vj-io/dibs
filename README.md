@@ -11,7 +11,7 @@ Built for the Nexconn Build Challenge 2026, track **Marketplace & Support**. Tea
 | | |
 | --- | --- |
 | Live app | https://tapdibs.vercel.app |
-| Judge demo | https://tapdibs.vercel.app/try (goes live at submission; it was not on the deployed build when this was written) |
+| Judge demo | https://tapdibs.vercel.app/try |
 | Feature map | https://tapdibs.vercel.app/how-it-works |
 | Real usage | https://tapdibs.vercel.app/impact (shows "nothing yet" until a real drop runs) |
 | Code | https://github.com/vj-io/dibs (public at submission) |
@@ -24,10 +24,10 @@ No sign-up, no second device.
 
 1. Open `/try` and tap **Be a buyer**.
 2. You join a demo sale room with 40 🤖 demo buyers. A banner says so: "Demo room · 40 🤖 demo buyers · nothing here is real money".
-3. Five seconds in, piece 1 goes live. About ten bots tap 0.08 to 0.4 seconds after it goes live. Tap **Dibs!** yourself. You will almost certainly land on the waitlist: "You're #3 on the waitlist."
+3. Five seconds in, piece 1 goes live. About ten bots tap 0.08 to 0.4 seconds after it goes live. Tap **Dibs!** yourself. You will almost certainly land on the waitlist: "You're #3 on the waitlist." In a manual run on production with real Nexconn, the waitlist promotion and the opening of the order room came about 30 to 40 seconds after the tap.
 4. Bots never pay. Each bot hold runs out after 20 seconds, and the next buyer in line is promoted. When it is your turn you see "It's yours! The buyer ahead didn't pay" and an order chat opens.
-5. In the order chat you see the order card and a payment card with a demo UPI ID. Tap **I've paid**. Asha, a labelled demo staff member, confirms about 3 seconds later. You get 90 seconds to pay in the demo; bots get 20.
-6. Piece 2 drops. Bots wait 1.5 to 3 seconds this time, so a quick tap wins outright. The room ticker shows "Sold to You" with your time.
+5. In the order chat you see the order card and a payment card with a demo UPI ID. Tap **I've paid**. Asha, a labelled demo staff member, confirms; in a manual run on production "Paid · confirmed by Asha (demo staff)" showed about 5 seconds after the tap. You get 90 seconds to pay in the demo; bots get 20 (these timings are also disclosed on `/try` and `/how-it-works`).
+6. Piece 2 goes live only after you are back in the room. Bots wait 1.5 to 3 seconds this time, so a quick tap wins outright. The room ticker shows "Sold to You" with your time.
 7. The demo room closes after 3 minutes with a "That's Dibs" card and links to the seller view.
 
 To run the seller side instead, tap **Be the seller**. You get the live console with the same 40 bots in the room. Press **Drop next**, watch taps, holds and waitlists fill the ledger, see a bot hold expire and the next buyer get promoted, open the team desk, mark an order paid and shipped, and mute a bot. A bot posts a fake UPI ID about 30 seconds in; the scam shield blocks it and it shows in the moderation log.
@@ -99,13 +99,13 @@ Statuses come from `docs/NEXCONN_FINDINGS.md` (proof of concept run live against
 | Group channel: order room | Private room for buyer, assigned staff and `dibs_bot` | `nexconn.ts` (`ensureGroup`, `sendGroup`), `src/components/order/OrderRoom.tsx` | Proven live. Create 189 ms, send 87 to 125 ms |
 | Group channel: team desk | All staff see every order in one feed | `nexconn.ts`, `src/components/seller/DeskView.tsx` | Proven live (same mechanism as the order room) |
 | Read receipts | Shows who has read a message in an order room | `live.ts` (`sendReadReceiptResponse`), `OrderRoom.tsx` | Proven live. A receipt came back read 1 of 2 |
-| System channel (personal alerts) | Private alerts: promoted, hold expiring, paid, shipped | `nexconn.ts` (`sendUser`) | Proven live. 86 ms. Behind `FEATURE_SYSTEM_CHANNEL`, on in production. Direct-message fallback also works (129 to 164 ms) |
+| System channel (personal alerts) | Private alerts: promoted, hold expiring, paid, shipped | `nexconn.ts` (`sendUser`) | Proven live. 86 ms. Behind `FEATURE_SYSTEM_CHANNEL`, which is on (`=1`) in production. Direct-message fallback also works (129 to 164 ms) |
 | Mute and ban lists | Seller mutes or bans from the console; Nexconn refuses the person's messages | `nexconn.ts` (`muteInRoom`, `banInRoom`) | Proven live. Mute 87 ms (send fails 23408); ban 116 ms (send and re-enter fail 23409) |
 | Server-side message delete | Scam shield removes a message for everyone, including a buyer's own text | `nexconn.ts` (`deleteMessage`), `src/lib/server/webhook.ts` | Proven live. About 120 ms |
 | Online status | New orders go to staff who are online | `nexconn.ts` (`onlineStatus`) | Proven live. 128 ms |
-| Community channel (shop club) | A club per shop with subchannels | `nexconn.ts`, flag `FEATURE_COMMUNITY` | Proven live behind `FEATURE_COMMUNITY` (create, join, send all succeeded, about 100 ms each). `getSubChannels()` returned an empty list right after creation |
-| `message:send` webhook | Drives the typed-claim helper, answer bot and scam shield | `src/app/api/nexconn/webhook/route.ts`, `webhook.ts` | Needs Console setting and the deployed URL. Not yet tested against a real Nexconn delivery. Signature check has unit tests on synthetic requests only |
-| Pre-message callback | Scam shield blocks before delivery, rules only | `src/app/api/nexconn/premessage/route.ts` | Behind `FEATURE_PREMESSAGE` (off). Not yet tested against Nexconn. With it off, the scam shield runs after delivery through the webhook |
+| Community channel (shop club) | Planned: a club per shop with subchannels | `nexconn.ts`, flag `FEATURE_COMMUNITY` | Proven live in the proof of concept (create, join, send all succeeded, about 100 ms each; `getSubChannels()` returned an empty list right after creation). Behind `FEATURE_COMMUNITY`, which is off in production: the shop club is not built |
+| `message:send` webhook | Drives the typed-claim helper, answer bot and scam shield | `src/app/api/nexconn/webhook/route.ts`, `webhook.ts` | Proven live on production. Set in the Console to `https://tapdibs.vercel.app/api/nexconn/webhook`. In a manual run a buyer message with a UPI id was delivered, then removed for everyone within about 5 seconds, and the answer bot replied to a bot's "COD hai?" from the shop FAQ. Not part of the proof-of-concept run, so no latency table. Signature check also has unit tests on synthetic requests |
+| Pre-message callback | Scam shield blocks before delivery, rules only | `src/app/api/nexconn/premessage/route.ts` | Not available on this plan (greyed out in the Console), so `FEATURE_PREMESSAGE=0`. The scam shield removes the message after delivery through the webhook |
 | Call SDK | Planned one-to-one video viewing | flag `FEATURE_CALLS` | Behind `FEATURE_CALLS` (off). Not tested; `@nexconn/call` is not installed. With the flag off, the order room shows the seller's WhatsApp number |
 
 Also found live: unregistered custom message types are dropped silently, so the client registers every `DB:*` type before connecting. Any message a buyer pastes in the `[[DB:Sold]]{...}` shape stays plain text. Open-channel history needs cloud retention (error 23414), which is off; join history comes with `enterChannel`, and state comes from `GET /api/drops/:id/state`.
@@ -140,11 +140,11 @@ AI does three helper jobs through the Vercel AI SDK (`src/lib/ai/`). Each tries 
                                            └─────────────────────────┘   answer bot, scam shield text
 ```
 
-**The claim path:** browser, then `POST /api/claims`, then one Postgres transaction (`claim_dibs`) that writes the claim, order, audit row and outbox rows, then `drainOutbox()` sends the cards through the Nexconn Server API, then every browser receives them. The browser talks to Nexconn directly only to receive live updates and to chat.
+**The claim path:** browser, then `POST /api/claims`, then one round trip to Supabase over its HTTP RPC (`api_claim`, migration `0007`) that runs one Postgres transaction (`claim_dibs`) which writes the claim, order, audit row and outbox rows, then `drainOutbox()` sends the cards through the Nexconn Server API, then every browser receives them. The browser talks to Nexconn directly only to receive live updates and to chat.
 
 The database decides; Nexconn carries what people see. Hold expiry is handled by `sweep_drop`, which runs on every call that touches a drop, on the seller console's heartbeat, on an open order page's heartbeat, and from cron. If the live connection drops, the sale room shows "Reconnecting", disables Dibs and polls the state API.
 
-Stack: Next.js 16 (App Router), TypeScript, Tailwind v4, Supabase Postgres and Auth, `postgres` library, Nexconn Chat Web SDK and Server API, Vercel AI SDK with Google Gemini, `jose`, `zod`.
+Stack: Next.js 16 (App Router), TypeScript, Tailwind v4, Supabase Postgres (engine calls over HTTP RPC) and Auth, Nexconn Chat Web SDK and Server API, Vercel AI SDK with Google Gemini, `jose`, `zod`.
 
 ## Judge mode and bot honesty
 
@@ -152,21 +152,34 @@ Stack: Next.js 16 (App Router), TypeScript, Tailwind v4, Supabase Postgres and A
 - Bots tap through the same `claim_dibs` function as real buyers and win or lose honestly. Only their delays are scripted.
 - Bots never pay. Their holds always expire after 20 seconds. That is how a judge sees a promotion.
 - Bots cannot claim in real drops (a test checks this). Demo data is excluded from `/impact` and the dashboard totals (a test checks this).
-- Demo drops come from a pool of 8 reusable open channels, to stay under Nexconn's open-channel limit.
+- Demo drops come from a pool of 16 reusable open channels, to stay under Nexconn's open-channel limit. A room in use is never recycled; when all are busy the page waits and retries.
+- Each visitor gets fresh demo staff. Demo shops are read-only (settings and products) for visitors. A human gets 90 seconds to pay and bots get 20; piece 2 goes live only after the visitor is back in the room. These timings are disclosed on `/try` and `/how-it-works`.
 
 ## Tests
 
 | Suite | What it proves | Command |
 | --- | --- | --- |
-| Unit (beside the code in `src/**/*.test.ts`) | UPI link builder, `DB:*` codec and its sender check, scam-shield rules, typed-claim rules, answer-bot output checks, outbox, mock bus, client version merge, bot planning | `npm test` |
-| Claim engine on real Postgres (`tests/db/`) | No double sell under 300 concurrent claims; waitlist order; hold limit; sweep and promotion; idempotent sweep; payment pause; release and cancel; staff permission; anon role can call nothing | `npm run test:db` |
-| API over real HTTP (`tests/api/`) | Full loop: shop, product, drop, live, claim race, release, promotion, pay, confirm, ship; permission walls; validation; rate limit; no phone numbers in public responses; data deletion | start the app with `REALTIME_MODE=mock DIBS_TEST_LOGIN=1` on port 3103, then `API_BASE=http://localhost:3103 node --env-file=.env.local --test "tests/api/*.test.ts"` |
-| Judge mode and webhook (`tests/sandbox/`) | Simulated judges reach "It's yours", pay and win piece 2; bots only in demo drops; demo data not in impact; signed webhook, replay ignored, scam block, typed-claim prompt, answer-bot limits | `node --env-file=.env.local --test --test-concurrency=1 "tests/sandbox/*.test.ts"` |
-| Browser end to end (`tests/e2e/`, Playwright, phone size 360 px) | Two buyers racing, pay and confirm, release and promotion, offline and back, seller console flow | `python tests/e2e/buyer_flow.py` and `python tests/e2e/seller_flow.py` against a dev server (see the file headers) |
+| Unit, 52 tests (beside the code in `src/**/*.test.ts`) | UPI link builder, `DB:*` codec and its sender check, scam-shield rules, typed-claim rules, answer-bot output checks, outbox, mock bus, client version merge, bot planning | `npm test` |
+| Database engine, concurrency and outbox, 27 tests, real Postgres (`tests/db/`) | No double sell under 300 concurrent claims; waitlist order; hold limit; sweep and promotion; idempotent sweep; payment pause; release and cancel; staff permission; anon role can call nothing | `npm run test:db` |
+| API over real HTTP, 10 tests (`tests/api/`) | Full loop: shop, product, drop, live, claim race, release, promotion, pay, confirm, ship; permission walls; validation; rate limit; no phone numbers in public responses; data deletion | start a local server with `REALTIME_MODE=mock DIBS_TEST_LOGIN=1`, then `npm run test:api` (set `API_BASE` if it is not on port 3100) |
+| Judge mode and webhook, 17 tests (`tests/sandbox/`) | Simulated judges reach "It's yours", pay and win piece 2; bots only in demo drops; demo data not in impact; signed webhook, replay ignored, scam block, typed-claim prompt, answer-bot limits | `npm run test:sandbox` |
+| Browser end to end (`tests/e2e/`, Playwright, phone size 360 px): buyer flow 33 checks, seller flow all steps | Two buyers racing, pay and confirm, release and promotion, offline and back, seller console flow | `npm run test:e2e` against a dev server (see the file headers) |
 | Nexconn proof of concept | The live findings in `docs/NEXCONN_FINDINGS.md` | `node --env-file=.env.local scripts/nexconn-poc.ts`, `python scripts/nexconn-poc-browser.py [--live]` |
 | Static checks | Types, lint, secrets | `npm run typecheck`, `npm run lint`, `bash scripts/secret-scan.sh` |
 
-All of these use synthetic taps and simulated people. Latest counts: `TBD-after-measurement`. A load simulation against the deployed API (300 taps in 500 ms) is not in this repo yet; results will be added as `TBD-after-measurement`. Production tap-to-result median and p95: `TBD-after-measurement`.
+All of these use synthetic taps and simulated people. One browser pass of the judge-seller path (7 steps) was also run by hand. Simulated judges in the sandbox tests reached "It's yours" about 50 seconds after the click and won piece 2 by 65 to 70 seconds.
+
+### Production load simulation (synthetic taps from one laptop)
+
+`scripts/load-sim.ts` against https://tapdibs.vercel.app, 19 Nov 2026. Full log of every run, including the failures: `docs/load-sim-results.md`.
+
+- **Shape:** 400 simulated buyers; 300 taps on one variant with 2 units, spread over 0.6 to 0.8 seconds.
+- **Result (latest run):** 2 won, 200 waitlisted (the cap for that test shop), 98 "waitlist full", 0 errors, 0 rate-limited. All 8 database invariants passed: zero double sells, stock never negative, waitlist positions unique and in commit order.
+- **Latency in the burst:** median 2.8 s, p95 4.0 s, measured by the client. Each simulated buyer opens its own TLS connection from one laptop, so this is burst queueing, not what a normal tap feels like.
+- **The two winning taps:** 301 ms and 497 ms (previous run: 180 ms and 237 ms).
+- **A single warm tap outside the burst:** 149 to 217 ms from the same laptop.
+- **Target check:** our target of a median under 700 ms is met for a single warm tap from a laptop in India. It is not met inside a 300-tap burst from one machine. Phones on 4G are not measured.
+- **The first production runs failed.** They hit database connection limits (HTTP 500 for most taps). Two changes fixed it: engine calls moved to Supabase's HTTP RPC, so a burst queues instead of failing (migration `0007_rpc.sql`), and the tap became one round trip, `api_claim`. The runs that failed are kept in the results file.
 
 ## Running locally
 
@@ -175,7 +188,7 @@ Developed on Node 26, which runs the `.ts` tests directly (older Node needs Type
 ```bash
 npm install
 cp .env.example .env.local     # fill in the values below
-npm run db:apply               # applies supabase/migrations/*.sql in order (safe to re-run)
+npm run db:apply               # applies supabase/migrations/*.sql in order (re-runnable; see the warning below)
 node --env-file=.env.local scripts/seed-demo.ts   # judge-mode data: 40 bots, 8 demo shop slots
 npm run dev                    # http://localhost:3000
 ```
@@ -196,12 +209,13 @@ From `.env.example`:
 | `SESSION_SECRET`, `CRON_SECRET` | 32 or more random characters each. Server only |
 | `APP_URL` | Public base URL for share links and QR codes |
 
-**Mock realtime mode (no Nexconn keys).** Set `REALTIME_MODE=mock`. An in-process message bus with the same interface replaces Nexconn (`src/lib/server/mockbus.ts`, with a server-sent-events stream). You still need Postgres. The app refuses to start in mock mode when `VERCEL_ENV=production`. `DIBS_TEST_LOGIN=1` enables a test-only seller sign-in outside production.
+**Mock realtime mode (no Nexconn keys).** Set `REALTIME_MODE=mock`. An in-process message bus with the same interface replaces Nexconn (`src/lib/server/mockbus.ts`, with a server-sent-events stream). You still need Postgres. The app refuses to start in mock mode when `VERCEL_ENV=production`. `DIBS_TEST_LOGIN=1` enables a test-only seller sign-in; it is impossible on Vercel.
 
 ## Deploy notes
 
 - Vercel functions in Mumbai (`bom1`, set in `vercel.json`) and Supabase in Mumbai, so the claim path is one short hop to the database. The Nexconn data center is Singapore.
-- Hold expiry needs something to run when nobody is calling. The sweep also runs on every drop call and on console and order-page heartbeats. As a safety net, `vercel.json` has a Vercel cron for `/api/cron/sweep` once a day, and migration `0004_api.sql` sets up a per-minute Supabase `pg_cron` job with `pg_net` that calls the same route with `CRON_SECRET`. It starts working once the one-row `app_config` table holds the app URL and the secret.
+- Hold expiry needs something to run when nobody is calling. The sweep also runs on every drop call and on console and order-page heartbeats. As a safety net, Supabase `pg_cron` (with `pg_net`, migration `0004_api.sql`) calls `/api/cron/sweep` every minute with `CRON_SECRET`. It is active in production: `app_config` is filled. `vercel.json` also has a daily Vercel cron as a second backstop.
+- `npm run db:apply` re-applies every migration. Do not run it during a live drop: the database functions are briefly replaced in order.
 - Nexconn Console: webhook URL `https://<host>/api/nexconn/webhook` with `message:send`; metadata service and message priority on; group read receipts on; add the deploy domain if the web domain allowlist is on.
 - Set the four `FEATURE_*` flags to what the Console supports. `GET /api/config` returns the live flag state.
 
@@ -212,8 +226,10 @@ From `.env.example`:
 - Clients treat a message as a card only when `dibs_bot` sent it. A pasted copy stays text.
 - Every permission is checked on the server in the API route and inside the Postgres functions (a staff member of another shop gets `forbidden`). Hiding a button is never the protection. Tests cover the permission walls.
 - Sessions are HttpOnly, SameSite=Lax, Secure in production, 30 days. Staff sign in with a Supabase email one-time code.
+- Buyer sessions are per device. A join never attaches to an existing buyer, so the same phone number on a new device is a new buyer record. There is no one-time code by design, so a phone number is not verified. Buyer names are screened by the scam rules.
+- An independent review led to more hardening: read-only demo shops; a nonce replay guard on the webhook; banned buyers skipped at promotion; demo buyers cannot claim in real drops and are excluded from impact numbers; test login impossible on Vercel; removed staff leave their chat groups.
 - Rate limits are stored in the database, so they hold across server instances: 5 claims per second per buyer, with a 429 above that.
-- Webhooks: signature checked, 5-minute timestamp window, replay ignored by message id. Nexconn does not sign the body, so content is re-checked.
+- Webhooks: signature checked, 5-minute timestamp window, replay ignored by message id and nonce. Nexconn does not sign the body, so content is re-checked.
 - Phone numbers never appear in Nexconn messages or public responses. Public names are first name plus last initial. A buyer can delete their data from `/me`.
 - Headers: no framing (`X-Frame-Options: DENY`, `frame-ancestors 'none'`), `nosniff`, strict referrer policy. Row-level security is on for the tables; the anon role can call nothing (tested).
 - `bash scripts/secret-scan.sh` scans tracked files for likely secrets before each push.
@@ -225,16 +241,16 @@ Honest limits, each checked against the code:
 - **No phone verification.** Buyers join with a name and a typed 10-digit number. There is no one-time code, so a phone number is not verified.
 - **No payments handled.** Buyers pay the seller's UPI directly. Dibs shows the link or QR and records the seller's confirmation. There is no bank check, refund or escrow.
 - **Video viewing is not built.** The Call SDK is not installed or tested. The order room shows a link to the seller's WhatsApp number instead. `FEATURE_CALLS` is off.
-- **Pre-message blocking is off** and untested. The scam shield removes a message after delivery.
-- **The webhook has not been tested against a real Nexconn delivery.** Until it is set in the Console, the typed-claim helper, answer bot and after-delivery scam shield do not run on live chat.
+- **Pre-message blocking is not available** on this plan (greyed out in the Console). The scam shield removes a message after delivery, so a blocked message can be seen for a few seconds (about 5 seconds in a manual run) before it disappears.
+- **No shop club.** The community channel works in the proof of concept, but `FEATURE_COMMUNITY=0` and no club is built.
 - **Light theme only.**
 - **English interface only.** Typed Hinglish is understood by the helpers; the screens are not translated.
 - **No video livestream, shipping integration, invoices or GST.**
 - **No marketplace across shops.** Each shop has its own link.
 - **No native apps.** It is a mobile-first web app.
-- **Not tested on real phones, 4G or more than two live clients at once.** Behaviour at the plan's connection limit is unknown.
+- **Not measured on real phones or 4G.** The load simulation is synthetic taps from one laptop. Behaviour at the Nexconn plan's connection limit is unknown.
 - **No real drop has run yet.** No real users, no seller feedback, no real orders.
-- Open-channel participant-count events did not fire in our tests, so the viewer count comes from a server poll.
+- The viewer count in the sale-room header comes from Nexconn's open-channel participant count. It can over-count because offline users are removed lazily.
 
 ## What existed before
 

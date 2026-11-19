@@ -45,6 +45,7 @@ export function Console({ dropId }: { dropId: string }) {
   const [other, setOther] = useState("");
   const [confirmEnd, setConfirmEnd] = useState(false);
   const live = useRef<Awaited<ReturnType<typeof getLive>> | null>(null);
+  const hidden = useRef(new Set<string>());
   const sent = useRef(0), applied = useRef(0), lastAt = useRef(0);
 
   // Heartbeats may overlap (each takes a database round trip); a response is applied only if no newer one was,
@@ -79,10 +80,11 @@ export function Console({ dropId }: { dropId: string }) {
       offStatus = l.onStatus(setStatus);
       const leave = await l.joinRoom(channelId, (m) => {
         if (m.kind === "card" && m.card) {
-          if (m.card.t === "DB:Hide") { const id = m.card.messageId; setMsgs((xs) => xs.filter((x) => x.id !== id)); }
+          if (m.card.t === "DB:Hide") { const id = m.card.messageId; hidden.current.add(id); setMsgs((xs) => xs.filter((x) => x.id !== id)); }
           else if (REFETCH.has(m.card.t)) onCard();
           return;
         }
+        if (hidden.current.has(m.id)) return; // its hide card arrived first
         setMsgs((xs) => (xs.some((x) => x.id === m.id) ? xs : [...xs, m].sort((a, b) => a.at - b.at).slice(-150)));
       });
       if (gone) leave(); else off = leave;
@@ -278,7 +280,8 @@ export function Console({ dropId }: { dropId: string }) {
           send={async (text) => {
             const l = live.current ?? await getLive("staff");
             const m = await l.sendText({ type: "room", id: state.channelId }, text);
-            setMsgs((xs) => (xs.some((x) => x.id === m.id) ? xs : [...xs, m]));
+            if (hidden.current.has(m.id)) return; // its hide card arrived first
+        setMsgs((xs) => (xs.some((x) => x.id === m.id) ? xs : [...xs, m]));
           }} />
         <Card flat className="flex flex-col gap-3" data-testid="moderation">
           <h2 className="flex items-center gap-2 text-xl"><Icon name="shield" />Moderation</h2>
@@ -294,7 +297,7 @@ export function Console({ dropId }: { dropId: string }) {
               ))}
             </ul>
           )}
-          <p className="text-[0.95rem] text-muted">The scam shield blocks phone numbers, UPI IDs and payment requests from buyers. Blocked messages never reach the room; only the rule shows here.</p>
+          <p className="text-[0.95rem] text-muted">The scam shield blocks phone numbers, UPI IDs and payment requests from buyers. Blocked messages are removed from the room within seconds; only the rule shows here, never the text.</p>
           {c.moderation.length ? (
             <ol className="flex max-h-80 flex-col gap-1.5 overflow-y-auto" aria-label="Moderation log">
               {c.moderation.map((m) => (
