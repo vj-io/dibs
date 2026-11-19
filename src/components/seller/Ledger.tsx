@@ -72,6 +72,7 @@ export function Ledger({ rows, showPiece, onOpen, onCancel }: {
             <div className="flex flex-wrap items-center gap-1.5">
               {promotedHold && <Badge size="sm" tint="yellow" icon="arrowRight" className="pop-in">from waitlist</Badge>}
               <StatePill size="sm" state={p.state} label={r.state === "waitlisted" && r.waitPosition ? `#${r.waitPosition} waitlist` : p.label} />
+              {r.isBot && (r.state === "payment_claimed" || r.state === "paid" || r.state === "shipped") && <span className="rounded-pill border-2 border-violet-ink bg-violet px-1.5 text-sm font-semibold text-violet-ink">🤖 demo payment</span>}
               {r.state === "held" && r.expiresAt && <Countdown size="sm" expiresAt={r.expiresAt} />}
             </div>
             {r.orderId && (ACTIVE.has(r.state)) && (

@@ -26,7 +26,7 @@ No sign-up, no second device.
 2. You join a demo sale room with 40 🤖 demo buyers. A banner says so: "Demo room · 40 🤖 demo buyers · nothing here is real money".
 3. Five seconds after the room opens on your screen, piece 1 goes live. About ten bots tap 0.08 to 0.4 seconds after it goes live. Tap **Dibs!** yourself. You will almost certainly land on the waitlist: "You're #3 on the waitlist." The waitlist promotion and the order room come about 25 seconds after the tap (about 34 seconds from the click), measured over 25 simulated judges on this build (22 to 27 s) with 12-second bot holds. With the earlier 20-second bot holds a production check measured about 40 seconds after the tap (about 50 from the click).
 4. Bots never pay. Each bot hold runs out after 12 seconds, and the next buyer in line is promoted. When it is your turn you see "It's yours! The buyer ahead didn't pay" and an order chat opens.
-5. In the order chat you see the order card and a payment card with a demo UPI ID. Tap **I've paid**. Asha, a labelled demo staff member, confirms; in a manual run on production "Paid · confirmed by Asha (demo staff)" showed about 5 seconds after the tap. You get 90 seconds to pay in the demo; bots get 12 (these timings are also disclosed on `/try` and `/how-it-works`).
+5. In the order chat you see the order card and a payment card that reads "Dibs demo: no real payment" (the demo payment cannot be paid, so there is no UPI link or QR to scan). Tap **I've paid**. Asha, a labelled demo staff member, confirms; in a manual run on production "Paid · confirmed by Asha (demo staff)" showed about 5 seconds after the tap. You get 90 seconds to pay in the demo; bots get 12 (these timings are also disclosed on `/try` and `/how-it-works`).
 6. Piece 2 goes live only after you are back in the room. Bots wait 1.5 to 3 seconds this time, so a quick tap wins outright. The room ticker shows "Sold to You" with your time.
 7. The demo room closes after 3 minutes with a "That's Dibs" card and links to the seller view.
 
@@ -36,7 +36,7 @@ The bots tap at set delays. The claim logic is the same code a real drop uses; i
 
 ## The problem
 
-Small Indian sellers run "first come, first served" drops in comments, DMs and WhatsApp groups. Messages cross, two people claim one piece, orders live in a notebook, and slow replies send buyers elsewhere. Evidence, from the product requirements (`docs/PRD.md`):
+Small Indian sellers run "first come, first served" drops in comments, DMs and WhatsApp groups. Messages cross, two people claim one piece, orders live in a notebook, and slow replies send buyers elsewhere. Evidence:
 
 - Doing it by hand is messy: comment floods, lost orders, delayed payments and buyers asking "did you see mine?" ([Ulive.me](https://blog.ulive.me/posts/guide-to-live-selling-on-facebook-and-instagram-without-manual-work)).
 - Slow replies lose sales: in many small brands one person replies from one phone, and a DM left for three hours often becomes a sale for another brand ([Wati](https://www.wati.io/en/blog/how-to-sell-on-instagram/)).
@@ -51,12 +51,13 @@ Small Indian sellers run "first come, first served" drops in comments, DMs and W
 
 **Seller (Meera, shop owner; Asha, staff)**
 
-1. Sign in with an email one-time code. Create the shop: name, UPI ID, payee name, support WhatsApp number, hold time for unpaid claims.
+1. Create an account with an email and a password (no email is sent, so nothing can lock you out) or sign in with an email one-time code. Create the shop: name, UPI ID, payee name, support WhatsApp number, hold time for unpaid claims. A three-step start wizard at `/seller/start` then walks through payment details, first pieces (or three sample pieces) and the first drop; each step can be skipped.
 2. Add products with photos, price and variants (for example sizes), each with a quantity.
-3. Create a drop (title, start time, products in order). Dibs gives a share link, `/s/<shop>/d/<drop>`, and a QR code. Share it in the WhatsApp group.
+3. Create a drop (title, start time, products in order). Dibs gives a **share kit**: the share link `/s/<shop>/d/<drop>`, announcement texts in English and Hinglish to copy or send on WhatsApp, the QR code as a PNG, a "Rehearse this drop" link into the demo room, and a run-your-drop checklist. Buyers who open the link before the start see "Add to calendar" (an `.ics` file), Google Calendar and WhatsApp-share buttons.
 4. Press **Go live**, then **Drop next**. The piece appears for everyone at once. The console shows live taps, holds, waitlists and stock.
 5. Each win creates an order. It goes to the team desk, assigned to the owner if it is over a value the owner sets, otherwise to the staff member with the fewest open orders.
-6. Staff mark **Payment received** (or **Not received**), then **Shipped**. **End drop** closes the sale.
+6. Staff mark **Payment received** (or **Not received**), then **Shipped**. **End drop** closes the sale. Orders of a drop export as CSV (`/api/exports/orders.csv`, times in IST).
+7. The owner adds team members by email and can copy a fresh 7-day invite link for a pending member. Each shop also has a club (below).
 
 **Buyer (Priya, Rohan)**
 
@@ -66,7 +67,15 @@ Small Indian sellers run "first come, first served" drops in comments, DMs and W
 4. A winner gets an order chat with a UPI payment card (a button on phones, a QR code on laptops). Pay in your UPI app, tap **I've paid**, add the UTR number if you want. Staff confirm.
 5. A waitlisted buyer is promoted when a hold ends and is told in a personal alert.
 
+**Also built.** Share previews: a drop link posted in WhatsApp or Instagram shows a generated preview image (`opengraph-image` and `twitter-image` per drop). Tap speed: each buyer's browser reports how long the tap took to show a result (migration `0011_tap_metrics.sql`; no names, phones or buyer ids stored; demo taps are kept out of the default summary). No real-buyer numbers exist yet, because no real drop has run.
+
 Dibs does not take or hold money. The buyer pays the seller directly by UPI. Dibs records only the seller's confirmation.
+
+## Shop club
+
+Each shop can have a club on Nexconn **community channels**, with three subchannels: **#drops** (the seller's announcements, and an automatic post for each drop; only staff and `dibs_bot` post there), **#chat** (members only; phone numbers and UPI IDs are refused) and **#reviews** (one review per paid or shipped order, written by that buyer; the seller can hide a review with a reason and remove a member). Buyers read Drops and Reviews without joining; joining unlocks Chat and live updates. Pages: `/s/<shop>/club` (buyer) and `/seller/club` (seller). Server code: `src/lib/server/club.ts`; migration `0012_club.sql`.
+
+It is **on in production** (`FEATURE_COMMUNITY=1`). Shop club (FEATURE_COMMUNITY): community channel + #drops/#chat/#reviews proven live 19 Nov 2026: 14/14 browser checks, bot→member delivery 10/10, median 213 ms; non-members receive nothing. On production the same day, the club flow (`tests/e2e/club_flow.py` against the live URL) passed 6/6 browser steps with 0 errors. No real shop has a club with real members yet.
 
 ## The fairness rules
 
@@ -87,7 +96,7 @@ Tests on a real Postgres check this (see Tests): 300 concurrent claims on 2 unit
 
 ## Nexconn feature map
 
-Statuses come from `docs/NEXCONN_FINDINGS.md` (proof of concept run live against the Singapore data center on 19 Nov 2026, two real browser contexts, SDK `@nexconn/chat` and `@nexconn/engine` 26.2.1). The same map, with the live flag state, is at `/how-it-works`.
+Statuses come from `docs/NEXCONN_FINDINGS.md` (proof of concept run live against the Singapore data center on 19 Nov 2026, two real browser contexts, SDK `@nexconn/chat` and `@nexconn/engine` 26.2.1) plus the production runs named in the Evidence column. The same map, with the live flag state, is at `/how-it-works`.
 
 | Feature | What it does in Dibs | Where in code | Status |
 | --- | --- | --- | --- |
@@ -96,17 +105,19 @@ Statuses come from `docs/NEXCONN_FINDINGS.md` (proof of concept run live against
 | Custom message types `DB:*` from `dibs_bot` | Typed cards: item, sold, back, stock, order, pay, status, alert. Only `dibs_bot` cards count; a pasted copy stays text | `src/lib/codec.ts`, `live.ts` (`registerCustomMessages`) | Proven live. Server send to browser: median 436 ms, n=20 (min 377, max 2093). Text-envelope fallback: median 441 ms, n=20 |
 | Message priority | Sold and stock cards sent at high priority | `nexconn.ts` (`sendRoom`) | Proven live. Priority 2 accepted (code 0). Effect on delivery order not measured |
 | Open-channel metadata | Server mirrors state as a hint; Dibs never trusts it | `nexconn.ts` (`setRoomMeta`), `src/lib/server/outbox.ts` | Proven live (set 99 to 155 ms; browsers get the change event). Any connected client can overwrite it, so it is a hint only |
-| Group channel: order room | Private room for buyer, assigned staff and `dibs_bot` | `nexconn.ts` (`ensureGroup`, `sendGroup`), `src/components/order/OrderRoom.tsx` | Proven live. Create 189 ms, send 87 to 125 ms |
+| Group channel: order room | Private room for the buyer (who owns it) and the assigned staff; `dibs_bot` sends cards as a non-member | `nexconn.ts` (`ensureGroup`, `sendGroup`), `src/components/order/OrderRoom.tsx` | Proven live. Create 189 ms, send 87 to 125 ms. Bot-as-non-member checked in a production browser (cards arrived over the socket); see the group cap below |
 | Group channel: team desk | All staff see every order in one feed | `nexconn.ts`, `src/components/seller/DeskView.tsx` | Proven live (same mechanism as the order room) |
 | Read receipts | Shows who has read a message in an order room | `live.ts` (`sendReadReceiptResponse`), `OrderRoom.tsx` | Proven live. A receipt came back read 1 of 2 |
 | System channel (personal alerts) | Private alerts: promoted, hold expiring, paid, shipped | `nexconn.ts` (`sendUser`) | Proven live. 86 ms. Behind `FEATURE_SYSTEM_CHANNEL`, which is on (`=1`) in production. Direct-message fallback also works (129 to 164 ms) |
 | Mute and ban lists | Seller mutes or bans from the console; Nexconn refuses the person's messages | `nexconn.ts` (`muteInRoom`, `banInRoom`) | Proven live. Mute 87 ms (send fails 23408); ban 116 ms (send and re-enter fail 23409) |
 | Server-side message delete | Scam shield removes a message for everyone, including a buyer's own text | `nexconn.ts` (`deleteMessage`), `src/lib/server/webhook.ts` | Proven live. About 120 ms |
 | Online status | New orders go to staff who are online | `nexconn.ts` (`onlineStatus`) | Proven live. 128 ms |
-| Community channel (shop club) | Planned: a club per shop with subchannels | `nexconn.ts`, flag `FEATURE_COMMUNITY` | Proven live in the proof of concept (create, join, send all succeeded, about 100 ms each; `getSubChannels()` returned an empty list right after creation). Behind `FEATURE_COMMUNITY`, which is off in production: the shop club is not built |
+| Community channel (shop club) | A club per shop with #drops, #chat and #reviews | `nexconn.ts`, `src/lib/server/club.ts`, `src/components/club/` | Proven live 19 Nov 2026: 14/14 browser checks, bot→member delivery 10/10, median 213 ms; non-members receive nothing. On production the club flow passed 6/6 browser steps, 0 errors. On in production (`FEATURE_COMMUNITY=1`). The community history API is off on our plan (1009), so pages read Dibs's own `club_posts` table |
 | `message:send` webhook | Drives the typed-claim helper, answer bot and scam shield | `src/app/api/nexconn/webhook/route.ts`, `webhook.ts` | Proven live on production. Set in the Console to `https://tapdibs.vercel.app/api/nexconn/webhook`. In a manual run a buyer message with a UPI id was delivered, then removed for everyone within about 5 seconds, and the answer bot replied to a bot's "COD hai?" from the shop FAQ. Not part of the proof-of-concept run, so no latency table. Signature check also has unit tests on synthetic requests |
 | Pre-message callback | Scam shield blocks before delivery, rules only | `src/app/api/nexconn/premessage/route.ts` | Not available on this plan (greyed out in the Console), so `FEATURE_PREMESSAGE=0`. The scam shield removes the message after delivery through the webhook |
 | Call SDK | Planned one-to-one video viewing | flag `FEATURE_CALLS` | Behind `FEATURE_CALLS` (off). Not tested; `@nexconn/call` is not installed. With the flag off, the order room shows the seller's WhatsApp number |
+
+Two limits found on production (19 Nov 2026, details in `docs/NEXCONN_FINDINGS.md`): **a user can be in at most 1,000 group channels** (create fails with code 22413). `dibs_bot` had hit it because it owned and joined every order room, so the buyer now owns the order room, the bot sends as a non-member, and the cron sweep dismisses the group of a deleted order or shop (992 orphan groups were dismissed). A staff member is still in every order room of the shop, so 1,000 undeleted order rooms per staff member remains a ceiling. And **code 1008 is Nexconn's rate limit** (documented 20 messages per second): 40 group sends fired at once gave 19 successes and 21 `1008`; the outbox retries, so cards arrive late, not lost.
 
 Also found live: unregistered custom message types are dropped silently, so the client registers every `DB:*` type before connecting. Any message a buyer pastes in the `[[DB:Sold]]{...}` shape stays plain text. Open-channel history needs cloud retention (error 23414), which is off; join history comes with `enterChannel`, and state comes from `GET /api/drops/:id/state`.
 
@@ -159,11 +170,12 @@ Stack: Next.js 16 (App Router), TypeScript, Tailwind v4, Supabase Postgres (engi
 
 | Suite | What it proves | Command |
 | --- | --- | --- |
-| Unit, 52 tests (beside the code in `src/**/*.test.ts`) | UPI link builder, `DB:*` codec and its sender check, scam-shield rules, typed-claim rules, answer-bot output checks, outbox, mock bus, client version merge, bot planning | `npm test` |
-| Database engine, concurrency and outbox, 27 tests, real Postgres (`tests/db/`) | No double sell under 300 concurrent claims; waitlist order; hold limit; sweep and promotion; idempotent sweep; payment pause; release and cancel; staff permission; anon role can call nothing | `npm run test:db` |
-| API over real HTTP, 10 tests (`tests/api/`) | Full loop: shop, product, drop, live, claim race, release, promotion, pay, confirm, ship; permission walls; validation; rate limit; no phone numbers in public responses; data deletion | start a local server with `REALTIME_MODE=mock DIBS_TEST_LOGIN=1`, then `npm run test:api` (set `API_BASE` if it is not on port 3100) |
+| Unit, 66 tests (beside the code in `src/**/*.test.ts`) | UPI link builder, `DB:*` codec and its sender check, scam-shield rules, typed-claim rules, answer-bot output checks, outbox, mock bus, client version merge, bot planning | `npm test` |
+| Database engine, concurrency, outbox and perf, 32 tests, real Postgres (`tests/db/`) | No double sell under 300 concurrent claims; waitlist order; hold limit; sweep and promotion; idempotent sweep; payment pause; release and cancel; staff permission; anon role can call nothing | `npm run test:db` |
+| API over real HTTP, 21 tests (`tests/api/`) | Seller accounts and sign-in, club, full loop: shop, product, drop, live, claim race, release, promotion, pay, confirm, ship; permission walls; validation; rate limit; no phone numbers in public responses; data deletion | start a local server with `REALTIME_MODE=mock DIBS_TEST_LOGIN=1`, then `npm run test:api` (set `API_BASE` if it is not on port 3100) |
 | Judge mode and webhook, 17 tests (`tests/sandbox/`) | Simulated judges reach "It's yours", pay and win piece 2; bots only in demo drops; demo data not in impact; signed webhook, replay ignored, scam block, typed-claim prompt, answer-bot limits | `npm run test:sandbox` |
-| Browser end to end (`tests/e2e/`, Playwright, phone size 360 px): buyer flow 33 checks, seller flow all steps | Two buyers racing, pay and confirm, release and promotion, offline and back, seller console flow | `npm run test:e2e` against a dev server (see the file headers) |
+| Browser end to end (`tests/e2e/`, Playwright, phone size 360 px): buyer flow, seller flow, club flow | Two buyers racing, pay and confirm, release and promotion, offline and back, seller console flow, club join, chat, announce, review, hide | `npm run test:e2e` (buyer and seller) and `python tests/e2e/club_flow.py`, against a dev server (see the file headers) |
+| Production checks (`tests/prod/`) | Real seller sign-in and a full real drop, cleaned up afterwards (`seller_real.py`); the judge path and public pages in WebKit and Chromium, plus socket delivery and the club flow (`engine_pass.py`) | `python tests/prod/seller_real.py`, `python tests/prod/engine_pass.py` |
 | Nexconn proof of concept | The live findings in `docs/NEXCONN_FINDINGS.md` | `node --env-file=.env.local scripts/nexconn-poc.ts`, `python scripts/nexconn-poc-browser.py [--live]` |
 | Static checks | Types, lint, secrets | `npm run typecheck`, `npm run lint`, `bash scripts/secret-scan.sh` |
 
@@ -174,11 +186,12 @@ All of these use synthetic taps and simulated people. One browser pass of the ju
 `scripts/load-sim.ts` against https://tapdibs.vercel.app, 19 Nov 2026. Full log of every run, including the failures: `docs/load-sim-results.md`.
 
 - **Shape:** 400 simulated buyers; 300 taps on one variant with 2 units, spread over 0.6 to 0.8 seconds.
-- **Result (latest run):** 2 won, 200 waitlisted (the cap for that test shop), 98 "waitlist full", 0 errors, 0 rate-limited. All 8 database invariants passed: zero double sells, stock never negative, waitlist positions unique and in commit order.
-- **Latency in the burst:** median 2.8 s, p95 4.0 s, measured by the client. Each simulated buyer opens its own TLS connection from one laptop, so this is burst queueing, not what a normal tap feels like.
-- **The two winning taps:** 301 ms and 497 ms (previous run: 180 ms and 237 ms).
-- **A single warm tap outside the burst:** 149 to 217 ms from the same laptop.
+- **Result (latest run, 19 Nov 2026 10:09 UTC, commit 892489c):** 300 taps sent inside 504 ms on 2 units: 2 won, 200 waitlisted (the cap for that test shop), 98 "waitlist full", 0 errors, 0 rate-limited. All 8 database invariants passed: zero double sells, stock never negative, waitlist positions unique and in commit order.
+- **Latency in the burst:** median 2,752 ms, p95 3,952 ms, measured by the client; the server's own time per claim (arrival to response) had a median of 1,845 ms. Each simulated buyer opens its own TLS connection from one laptop, so this is burst queueing, not what a normal tap feels like.
+- **The two winning taps:** 163 to 181 ms, client-observed from one laptop.
+- **A single warm tap outside the burst:** 149 to 217 ms from the same laptop in an earlier run.
 - **Target check:** our target of a median under 700 ms is met for a single warm tap from a laptop in India. It is not met inside a 300-tap burst from one machine. Phones on 4G are not measured.
+- **Why the burst is slow and what was tried:** `docs/perf.md` has the breakdown (about 5.8 ms of serial time per tap on one drop, a small database instance, 300 new TLS connections from one laptop) and the changes, including what was not done and why. A larger database instance is the one change that would move every number, and it has not been made.
 - **The first production runs failed.** They hit database connection limits (HTTP 500 for most taps). Two changes fixed it: engine calls moved to Supabase's HTTP RPC, so a burst queues instead of failing (migration `0007_rpc.sql`), and the tap became one round trip, `api_claim`. The runs that failed are kept in the results file.
 
 ## Running locally
@@ -204,7 +217,7 @@ From `.env.example`:
 | `NEXCONN_APP_KEY`, `NEXCONN_APP_SECRET`, `NEXCONN_AREA` | Nexconn App Key, App Secret (server only), area `SG`, `NA` or `SA` |
 | `REALTIME_MODE` | `nexconn` or `mock`. Production refuses `mock` |
 | `NEXCONN_TEXT_ENVELOPE` | `1` sends cards as text if custom types do not reach clients |
-| `FEATURE_PREMESSAGE`, `FEATURE_COMMUNITY`, `FEATURE_SYSTEM_CHANNEL`, `FEATURE_CALLS` | `0` or `1`. Unconfirmed Nexconn features, each with a fallback |
+| `FEATURE_PREMESSAGE`, `FEATURE_COMMUNITY`, `FEATURE_SYSTEM_CHANNEL`, `FEATURE_CALLS` | `0` or `1`. Nexconn features behind a flag. In production the community and system-channel flags are `1`, pre-message and calls are `0` |
 | `GOOGLE_GENERATIVE_AI_API_KEY`, `AI_MODEL`, `AI_FALLBACK_MODELS` | AI helpers. Server only. Optional: without a key the helpers stay quiet and everything else works |
 | `SESSION_SECRET`, `CRON_SECRET` | 32 or more random characters each. Server only |
 | `APP_URL` | Public base URL for share links and QR codes |
@@ -217,6 +230,8 @@ From `.env.example`:
 - Hold expiry needs something to run when nobody is calling. The sweep also runs on every drop call and on console and order-page heartbeats. As a safety net, Supabase `pg_cron` (with `pg_net`, migration `0004_api.sql`) calls `/api/cron/sweep` every minute with `CRON_SECRET`. It is active in production: `app_config` is filled. `vercel.json` also has a daily Vercel cron as a second backstop.
 - `npm run db:apply` re-applies every migration. Do not run it during a live drop: the database functions are briefly replaced in order.
 - Nexconn Console: webhook URL `https://<host>/api/nexconn/webhook` with `message:send`; metadata service and message priority on; group read receipts on; add the deploy domain if the web domain allowlist is on.
+- Disk IO: migration `0013_io.sql` makes five throwaway tables unlogged (rate-limit hits, AI throttles, webhook replay guards, the demo bot script), because their write-ahead log was a large share of the database's disk writes (measured 19 Nov 2026). After a database crash they start empty (a fresh rate-limit window, a webhook possibly processed twice inside its replay window, a running demo room losing its remaining bot script). Stock, claims, orders, outbox and audit stay fully logged.
+- `/health` (staff only) reflects the sale only: outbox failures are counted for the last 24 hours, rows due more than 2 minutes ago are shown as stuck, and decisions made by rules alone are not recorded as failed AI calls.
 - Set the four `FEATURE_*` flags to what the Console supports. `GET /api/config` returns the live flag state.
 
 ## Security notes
@@ -225,7 +240,7 @@ From `.env.example`:
 - Tokens are issued only for the caller's own Nexconn id. Only the server creates channels, sends cards, mutes and bans.
 - Clients treat a message as a card only when `dibs_bot` sent it. A pasted copy stays text.
 - Every permission is checked on the server in the API route and inside the Postgres functions (a staff member of another shop gets `forbidden`). Hiding a button is never the protection. Tests cover the permission walls.
-- Sessions are HttpOnly, SameSite=Lax, Secure in production, 30 days. Staff sign in with a Supabase email one-time code.
+- Sessions are HttpOnly, SameSite=Lax, Secure in production, 30 days. Staff sign in with a Supabase email and password or an email one-time code; a wrong password is counted per email and per network and refused for 15 minutes past the limit, with one answer for every failure.
 - Buyer sessions are per device. A join never attaches to an existing buyer, so the same phone number on a new device is a new buyer record. There is no one-time code by design, so a phone number is not verified. Buyer names are screened by the scam rules.
 - An independent review led to more hardening: read-only demo shops; a nonce replay guard on the webhook; banned buyers skipped at promotion; demo buyers cannot claim in real drops and are excluded from impact numbers; test login impossible on Vercel; removed staff leave their chat groups.
 - Rate limits are stored in the database, so they hold across server instances: 5 claims per second per buyer, with a 429 above that.
@@ -242,7 +257,7 @@ Honest limits, each checked against the code:
 - **No payments handled.** Buyers pay the seller's UPI directly. Dibs shows the link or QR and records the seller's confirmation. There is no bank check, refund or escrow.
 - **Video viewing is not built.** The Call SDK is not installed or tested. The order room shows a link to the seller's WhatsApp number instead. `FEATURE_CALLS` is off.
 - **Pre-message blocking is not available** on this plan (greyed out in the Console). The scam shield removes a message after delivery, so a blocked message can be seen for a few seconds (about 5 seconds in a manual run) before it disappears.
-- **No shop club.** The community channel works in the proof of concept, but `FEATURE_COMMUNITY=0` and no club is built.
+- **The club has no real members yet.** It is built and on in production, tested with synthetic buyers only.
 - **Light theme only.**
 - **English interface only.** Typed Hinglish is understood by the helpers; the screens are not translated.
 - **No video livestream, shipping integration, invoices or GST.**

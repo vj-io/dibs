@@ -23,20 +23,22 @@ Dibs: first tap wins
 First tap wins. Everyone sees it. Nobody gets lost in the DMs.
 ```
 
-**One-paragraph summary** (limit 2000; this is about 1,980)
+**One-paragraph summary** (limit 2000; this is 1991)
 
 ```
 Dibs is a live sale room for Indian sellers who sell on WhatsApp and Instagram. The seller drops one piece at a time. Buyers tap Dibs. The server, not a phone and not a chat message, decides who was first, and everyone in the room sees "Sold to Priya S. · 0.4 s" within about a second.
 
-Late buyers join a waitlist and see their position. If the winner does not pay, the next buyer is promoted automatically. Each winner gets one private order chat with the seller's team, holding the order card, a UPI payment card (a button on phones, a QR code on laptops) and read receipts. Dibs never handles money: buyers pay the seller's UPI directly and staff confirm.
+Late buyers join a waitlist and see their position. If the winner does not pay, the next buyer is promoted automatically. Each winner gets one private order chat with the seller's team: order card, UPI payment card and read receipts. Dibs never handles money: buyers pay the seller's UPI directly and staff confirm.
 
-Fairness is enforced in Postgres. One transaction locks the stock row, so concurrent taps queue and are served in commit order. A unique index allows one active claim per buyer per piece. Tests on a real database fire 300 concurrent claims at 2 units and check that exactly 2 win and 20 are waitlisted in order. A production load simulation (synthetic taps from one laptop) of 300 taps at 2 units gave 2 won and zero double sells. None of this is real buyers.
+Fairness is enforced in Postgres. One transaction locks the stock row, so concurrent taps queue and are served in commit order; a unique index allows one active claim per buyer per piece. On production, 300 synthetic taps from one laptop inside 504 ms at 2 units gave 2 won, 200 waitlisted, 98 waitlist full, 0 errors, and all 8 database invariants held (19 Nov 2026). None of this is real buyers.
 
-A scam shield blocks phone numbers, UPI IDs and payment links from anyone who is not staff. AI does three helper jobs only: a private one-tap prompt when a buyer types "booked", an answer bot that uses only the shop's FAQ, and unclear scam text. AI never decides who was first, confirms a payment or changes stock.
+For sellers: sign up with email and password, a three-step start wizard, a share kit (English and Hinglish texts, QR PNG, rehearsal link), CSV export, staff invite links, and a shop club on Nexconn community channels (#drops, #chat, #reviews), live in production.
 
-Try it alone in about 90 seconds at /try: no sign-up, a private demo room with 40 demo buyers labelled with a robot icon. The bots tap through the same claim function and never pay, so you see the waitlist promotion for real. Bots exist only in the demo room and never count in real numbers.
+A scam shield blocks phone numbers, UPI IDs and payment links from non-staff. AI does three helper jobs only: a private one-tap prompt when a buyer types "booked", an answer bot that uses only the shop's FAQ, and unclear scam text. AI never decides who was first, confirms a payment or changes stock.
 
-Status: No real drop has run yet. The planned first drop is a jewellery seller who already sells on WhatsApp. A single warm tap takes about 150 to 220 ms from a laptop; in a 300-tap burst the median was 2.8 s. No phone verification; no video viewing.
+Try it alone in about 90 seconds at /try: no sign-up, a private room with 40 demo buyers labelled with a robot icon. They tap through the same claim function and never pay; the demo payment reads "Dibs demo: no real payment".
+
+Status: no real drop has run yet, so 0 real users. A single warm tap takes about 150 to 220 ms from a laptop; in the 300-tap burst the median was 2.75 s. No phone verification; no video calling.
 ```
 
 ## 02 Proof of Nexconn integration
@@ -52,11 +54,11 @@ qd46yzrfq1obf
 **SDK features you used** (at least 30 characters; this is specific on purpose)
 
 ```
-Chat SDK for Web (@nexconn/chat 26.2.1 + @nexconn/engine). Browser: NCEngine.initialize, registerCustomMessages for the DB:* card types (must run before connect), addConnectionStatusHandler, addMessageHandler (onMessageReceived), connect with a server-issued token, reconnect with a fresh token. Open channel (the sale room): OpenChannel.enterChannel with join history, sendMessage, OpenChannelHandler.onMetadataChanged. Group channels (one order room per winner, one team desk per shop): GroupChannel, BaseChannel.createMessagesQuery for history, read receipts with sendReadReceiptResponse and onMessageReceiptResponse. System channel and direct channel for personal alerts (promoted, expiring, paid, shipped). Community channel with subchannels was proven in the proof of concept; the shop club is not built (flag off). Custom message types DB:Item, DB:Sold, DB:Back, DB:Stock, DB:Order, DB:Pay, DB:Status, DB:Alert, DB:Desk, DB:Hide are accepted only when the sender is dibs_bot.
+Chat SDK for Web (@nexconn/chat 26.2.1 + @nexconn/engine). Browser: NCEngine.initialize, registerCustomMessages for the DB:* card types (must run before connect), addConnectionStatusHandler, addMessageHandler (onMessageReceived), connect with a server-issued token, reconnect with a fresh token. Open channel (the sale room): OpenChannel.enterChannel with join history, sendMessage, OpenChannelHandler.onMetadataChanged. Group channels (one order room per winner, owned by the buyer, with the bot sending as a non-member; one team desk per shop): GroupChannel, BaseChannel.createMessagesQuery for history, read receipts with sendReadReceiptResponse and onMessageReceiptResponse. System channel and direct channel for personal alerts (promoted, expiring, paid, shipped). Community channel with subchannels #drops, #chat and #reviews: the shop club, on in production (FEATURE_COMMUNITY=1); proven live 19 Nov 2026: 14/14 browser checks, bot to member delivery 10/10, median 213 ms, non-members receive nothing; production club flow 6/6 browser steps, 0 errors. Custom message types DB:Item, DB:Sold, DB:Back, DB:Stock, DB:Order, DB:Pay, DB:Status, DB:Alert, DB:Desk, DB:Hide are accepted only when the sender is dibs_bot.
 
 Server API (signed with App-Key, Nonce, Timestamp, Signature): /v4/auth/access-token/issue, /v4/open-channel/create and destroy, /v4/open-channel/message/send with priority, /v4/open-channel/metadata/batch/set, open-channel participant mute-list and ban-list add and remove, /v4/message/delete (the scam shield removes a message for everyone), /v4/user/connection-status/get (route orders to online staff), group-channel create and join, /v4/direct-channel/message/send and /v4/system-channel/message/send. The message:send webhook is set in the Console and works on production (scam shield, answer bot, typed-claim prompts); signature, timestamp, nonce and message id are checked. The pre-message callback is not available on our plan, so the scam shield removes a message after delivery.
 
-Measured live on the Singapore data center on 19 Nov 2026 (one machine in India): server to browser card median 436 ms (n=20). Details in docs/NEXCONN_FINDINGS.md.
+Measured live on the Singapore data center on 19 Nov 2026 (one machine in India): server to browser card median 436 ms (n=20). Limits found on production: a user can be in at most 1,000 group channels (code 22413, so the buyer owns the order room and the cron sweep dismisses groups of deleted orders), and code 1008 is a 20 messages per second rate limit (the outbox retries). Details in docs/NEXCONN_FINDINGS.md.
 ```
 
 ## 03 Links

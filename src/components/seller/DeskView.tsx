@@ -102,7 +102,7 @@ export function DeskView() {
                         <span className="font-mono font-bold">#{o.orderNo}</span>
                         <span className="min-w-0 flex-1 basis-40">
                           <span className="block truncate font-semibold">{o.buyer} · {o.item}</span>
-                          <span className="block truncate text-[0.95rem] text-muted">{o.variantLabel} · drop {o.dropCode}{o.assignedTo ? ` · ${o.assignedTo.staffId === me.staffId ? "you" : o.assignedTo.displayName}` : " · unassigned"}{o.utr ? ` · UTR ${o.utr}` : ""}</span>
+                          <span className="block truncate text-[0.95rem] text-muted">{o.variantLabel} · drop {o.dropCode}{o.assignedTo ? ` · ${o.assignedTo.staffId === me.staffId ? "you" : o.assignedTo.displayName}` : " · unassigned"}{o.utr ? ` · UTR ${o.utr}` : ""}{o.utr?.startsWith("DEMO-UTR-") ? " · 🤖 demo payment" : ""}</span>
                         </span>
                         <Price paise={o.amountPaise} size="sm" />
                         {o.state === "held" && o.expiresAt && <Countdown size="sm" expiresAt={o.expiresAt} />}
