@@ -108,7 +108,7 @@ A fair first tap has to be decided in one place. In Dibs that place is a Postgre
 - No real drop has run. No real users, orders or seller feedback.
 - No phone verification: a typed phone number is not verified.
 - No payments handled. Buyers pay the seller's UPI directly; Dibs records the seller's confirmation.
-- Pre-message blocking is not available on our plan, so a message sent around the app is removed after delivery (about 5 seconds in a manual run). The app itself refuses such text before sending.
+- Pre-message blocking is not available on our plan, so the app refuses such text before sending, every screen hides it on arrival (a line sent straight through the Server API never rendered), and the webhook removes it after delivery.
 - The club has no real members yet; it was tested with synthetic buyers.
 - Tap speed in buyers' browsers is recorded but no real-buyer numbers exist yet.
 - Video viewing is not built; no Hindi interface toggle; the order room links to the seller's WhatsApp number.

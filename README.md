@@ -256,7 +256,7 @@ Honest limits, each checked against the code:
 - **No phone verification.** Buyers join with a name and a typed 10-digit number. There is no one-time code, so a phone number is not verified.
 - **No payments handled.** Buyers pay the seller's UPI directly. Dibs shows the link or QR and records the seller's confirmation. There is no bank check, refund or escrow.
 - **Video viewing is not built.** The Call SDK is not installed or tested. The order room shows a link to the seller's WhatsApp number instead. `FEATURE_CALLS` is off.
-- **Pre-message blocking is not available** on this plan (greyed out in the Console). The app refuses a phone number or UPI ID before sending (0.0 s in 3 production trials on 19 Nov 2026). A message sent around the app is removed after delivery by the webhook, so it can be seen for a few seconds (about 5 seconds in a manual run).
+- **Pre-message blocking is not available** on this plan (greyed out in the Console). The app refuses a phone number or UPI ID before sending (0.0 s in 3 production trials on 19 Nov 2026), and every buyer's room and the seller console hide such a line the moment it arrives, so a message sent around the app does not show either (production check, 19 Nov 2026: a line with a UPI ID sent straight through the Server API never rendered in 10 s; a normal line sent the same way did). The webhook still removes it from Nexconn and records it for the seller.
 - **The club has no real members yet.** It is built and on in production, tested with synthetic buyers only.
 - **Light theme only.**
 - **English interface only.** Typed Hinglish is understood by the helpers; the screens are not translated.
