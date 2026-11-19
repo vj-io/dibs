@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { borderline, scamRules } from "./scam-shield.ts";
+import { borderline, hideOnArrival, scamRules } from "./scam-shield.ts";
 
 const BLOCK: [string, string][] = [
   ["call me 9876543210", "phone"], ["98765 43210", "phone"], ["98765-43210", "phone"], ["98765.43210", "phone"],
@@ -47,4 +47,12 @@ test("borderline", () => {
   for (const t of ["DM me", "cheaper rate milega, msg me", "whatsapp me", "msg me personally", "inbox", "dm kar do", "apne pass sasta hai", "message me for deal", "contact me"])
     assert.ok(borderline(t), t);
   for (const t of ["price?", "booked", "#3 M", "size hai?", "nice"]) assert.ok(!borderline(t), t);
+});
+
+test("hideOnArrival: scam text from a buyer is hidden; staff, bot and plain text are not", () => {
+  assert.equal(hideOnArrival("b_123", "pay me direct at priya.verify@okaxis"), true);
+  assert.equal(hideOnArrival("demo_bot_08", "call 98765 43210 for a better price"), true);
+  assert.equal(hideOnArrival("b_123", "is the green one still there? size M"), false);
+  assert.equal(hideOnArrival("s_9f1c", "pay me at shop@okaxis"), false);
+  assert.equal(hideOnArrival("dibs_bot", "pay to shop@okaxis"), false);
 });

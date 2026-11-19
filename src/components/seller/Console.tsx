@@ -9,6 +9,7 @@ import {
   BottomSheet, Button, buttonClasses, Card, cx, EmptyState, Field, Icon, LinkButton, PhoneFrame, Select, Skeleton, StatePill, Textarea,
   useToast, type PillState,
 } from "@/components/ui";
+import { hideOnArrival } from "@/lib/ai/scam-shield";
 import { api } from "@/lib/client/api";
 import { getLive, type LiveMsg, type LiveStatus } from "@/lib/client/live";
 import { rupees } from "@/lib/codec";
@@ -87,6 +88,7 @@ export function Console({ dropId }: { dropId: string }) {
           return;
         }
         if (hidden.current.has(m.id)) return; // its hide card arrived first
+        if (m.text && hideOnArrival(m.from, m.text)) return; // scam text never shows, even before the server removes it
         setMsgs((xs) => (xs.some((x) => x.id === m.id) ? xs : [...xs, m].sort((a, b) => a.at - b.at).slice(-150)));
       });
       if (gone) leave(); else off = leave;

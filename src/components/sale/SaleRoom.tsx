@@ -12,7 +12,7 @@ import { applyCard, forOtherDrop, mergeState, tickerKey } from "@/lib/client/sal
 import { useNow, useOnline, useSlow, useTryTick, withTimeout } from "@/lib/client/hooks";
 import { coachLine } from "@/lib/client/coach";
 import { reportTap } from "@/lib/client/tap-metric";
-import { BLOCKED_TEXT, scamRules } from "@/lib/ai/scam-shield";
+import { BLOCKED_TEXT, hideOnArrival, scamRules } from "@/lib/ai/scam-shield";
 import { displayName, tapTime, type Card } from "@/lib/codec";
 import type { ClaimResult, DropState, MyStatus, PublicConfig } from "@/lib/types";
 import {
@@ -169,7 +169,7 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
         if (c.t === "DB:State" || c.t === "DB:Item") { refreshState(); refreshMe(); }
         return;
       }
-      if (!m.text || hiddenRef.current.has(m.id)) return;
+      if (!m.text || hiddenRef.current.has(m.id) || hideOnArrival(m.from, m.text)) return;
       const line: ChatLine = { id: m.id, from: m.from, fromName: m.fromName, at: m.at, text: m.text };
       setChat((xs) => (xs.some((x) => x.id === m.id) ? xs : [...xs, line].slice(-150)));
     };

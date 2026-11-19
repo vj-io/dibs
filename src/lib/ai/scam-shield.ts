@@ -92,6 +92,17 @@ export function scamRules(text: string): { blocked: boolean; rule: ScamRule | nu
   return { blocked: false, rule: null };
 }
 
+/**
+ * True when a chat line that just arrived should not be shown at all: same rules as the server, for anyone except our
+ * own senders (staff ids start with s_ and get tokens only from our server; dibs_bot and dibs_assistant are ours).
+ * The server still decides and records moderation; this only keeps the text off screens if its removal is late
+ * (one production check on 19 Nov 2026 saw no removal within 30 s) or the message was sent around the app.
+ */
+export function hideOnArrival(fromUserId: string, text: string): boolean {
+  if (fromUserId.startsWith("s_") || fromUserId === "dibs_bot" || fromUserId === "dibs_assistant") return false;
+  return scamRules(text).blocked;
+}
+
 const BORDERLINE = new RegExp(
   [
     `\\bd\\.?m\\b`, `\\binbox\\b`, `\\bwhats\\s?app\\b`, `\\bwa\\b`, `\\btelegram\\b`, `\\binsta(?:gram)?\\b`,
