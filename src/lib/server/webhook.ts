@@ -77,9 +77,21 @@ export async function handleRoomText(m: RoomText, deps: TextDeps = realDeps): Pr
   if (from.startsWith("b_") && UUID.test(from.slice(2))) buyerId = from.slice(2);
   else if (from.startsWith("demo_bot_")) buyerId = (await sql`select id from buyers where is_bot and nexconn_user_id = ${from}`)[0]?.id ?? null;
   if (buyerId && !(await sql`select 1 from buyers where id = ${buyerId}`).length) buyerId = null;
-  // Only a known sender is acted on: a buyer that exists or a demo bot. Staff ids (tokens come only from our server)
-  // are never moderated; anything else (a forged or replayed body naming a stranger) is ignored.
-  if (!isStaff && (!buyerId || from.startsWith("s_"))) return "ignored";
+  // A sender who is neither this shop's staff nor a known buyer or bot (a user of another app on the same Nexconn key,
+  // another shop's staff, a deleted buyer) gets the scam rules only: no model, no helper, no answer bot. Forged and
+  // replayed bodies never get here (signature, time window and nonce are checked first).
+  if (!isStaff && (!buyerId || from.startsWith("s_"))) {
+    const v = scamRules(text);
+    if (!v.blocked) return "ignored";
+    await sql`insert into moderation_events (drop_id, buyer_id, nexconn_msg_id, rule, action) values (${ctx.drop_id}, ${null}, ${m.messageId}, ${v.rule}, 'blocked')`;
+    if (flags.mode === "nexconn") {
+      await nx.deleteMessage({ channelType: "room", channelId: m.channelId, messageId: m.messageId, fromUserId: from, sentAt: m.sentAt })
+        .catch((e) => console.error("[webhook] delete", e instanceof Error ? e.message : e));
+    }
+    await out(ctx.drop_id, "room", m.channelId, { t: "DB:Hide", v: Number(ctx.version), messageId: m.messageId }, "high");
+    await drainOutbox({ budgetMs: 3000 });
+    return "blocked";
+  }
 
   const isBot = from.startsWith("demo_bot_");
   // demo bots' canned lines earn at most one assistant answer and one prompt per piece (per drop between pieces)

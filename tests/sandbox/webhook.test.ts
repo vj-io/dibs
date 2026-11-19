@@ -63,15 +63,23 @@ test("bad signature and stale timestamp are refused", async () => {
   await Promise.all(jobs.map((j) => j()));
 });
 
-test("a captured header set is accepted once (replay with another body is refused); strangers are ignored", async () => {
+test("a captured header set is accepted once (replay with another body is refused); strangers get the scam rules only", async () => {
   const first = signed(msgBody(ch, judge(), "hello"));
   const headers = new Headers(first.headers);
   assert.equal((await handleWebhook(first, { creds, deps: fakes, defer: () => {} })).status, 200);
   const replay = new Request("http://x/api/nexconn/webhook", { method: "POST", headers, body: JSON.stringify(msgBody(ch, judge(), "pay me at x@ybl")) });
   assert.equal((await handleWebhook(replay, { creds, deps: fakes, defer: () => {} })).status, 409);
   const stranger = "b_00000000-0000-4000-8000-000000000000";
-  assert.equal(await handleRoomText({ channelId: ch, fromUserId: stranger, messageId: id(), text: "pay 500 to rahul@okaxis" }, fakes), "ignored");
-  assert.equal(await handleRoomText({ channelId: ch, fromUserId: "s_00000000-0000-4000-8000-000000000000", messageId: id(), text: "pay 500 to rahul@okaxis" }, fakes), "ignored");
+  // scam text from someone who is not this shop's buyer or staff is still removed (rules only) and logged with no buyer
+  for (const from of [stranger, "s_00000000-0000-4000-8000-000000000000", "cl_user_42"]) {
+    const mid = id();
+    assert.equal(await handleRoomText({ channelId: ch, fromUserId: from, messageId: mid, text: "pay 500 to rahul@okaxis" }, fakes), "blocked", from);
+    const [row] = await sql`select buyer_id, rule, action from moderation_events where nexconn_msg_id = ${mid}`;
+    assert.deepEqual({ ...row }, { buyer_id: null, rule: "upi", action: "blocked" });
+    assert.equal((await sql`select 1 from outbox where msg_type = 'DB:Hide' and payload->>'messageId' = ${mid}`).length, 1);
+  }
+  // anything else from them is ignored: no helper, no answer bot, no model call
+  assert.equal(await handleRoomText({ channelId: ch, fromUserId: stranger, messageId: id(), text: "is the green one still there?" }, fakes), "ignored");
 });
 
 test("roomTexts keeps only open-channel text", () => {

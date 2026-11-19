@@ -95,3 +95,9 @@ EnsureRoom, DB:State (+ metadata mirror), RoomMeta, Mute, Unban, EnsureGroup, DB
 - 40 group sends fired at once to one group: 19 answered `0`, 21 answered `1008` with the text "API call frequency exceeded limit. Try again later." The documented limit is 20 messages per second.
 - The 327 `group_send` failures logged on 18 Nov fall in the minutes of the load simulation and parallel test runs. The outbox retries a failed send, so the cards were delivered late, not lost.
 - A send to a group id that does not exist answers `0` with a message id. A missing order room is therefore silent on the send path; `/health` only shows it through failed `group_create` rows.
+
+## The one late scam removal (19 Nov 2026): the message never reached Nexconn
+
+- In 1 of 14 production checks the buyer's UPI message was not removed within 30 s. Polaris (Console → Polaris → Chat → Message Status, kept 7 days) settled it. In every passing run's room it lists the buyer's `Text` message from `Web` and, in the same second, an `RC:RcCmd` from `Server` (our webhook's recall). In the room of the failing run (`dr_V3KUF9`) it lists only `dibs_bot`'s cards: no message from the buyer at all, and no `DB:Hide`. So the send failed in the buyer's browser and the webhook was never called. The browser's error text was not saved by that test run.
+- Since then the app refuses such text before sending, and every screen hides it on arrival. Polaris needs either a sender id or a target (room) id; querying by room with Channel "Open channel" works.
+- Found while looking: the webhook ignored scam text from any sender who was not a known buyer, bot or this shop's staff (for example a user of another app on the same Nexconn key). It now applies the scam rules to them too: removal, hide card and a moderation record with no buyer.
