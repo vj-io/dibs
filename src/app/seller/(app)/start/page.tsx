@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: "Get your first drop ready" };
 
 export default async function Page() {
   const s = await getStaff();
-  const me = s ? await sellerMe(s.staffId) : null;
+  const me = s ? await sellerMe(s.staffId, s.iat) : null;
   if (!me || me.role !== "owner" || me.shop.isSandbox) redirect("/seller/drops");
   return <StartWizard />;
 }

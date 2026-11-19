@@ -4,7 +4,8 @@ import { cookies } from "next/headers";
 import { fail } from "./http.ts";
 
 export type BuyerSession = { kind: "buyer"; buyerId: string };
-export type StaffSession = { kind: "staff"; staffId: string; shopId: string; role: "owner" | "staff" };
+/** `iat`: when the cookie was issued (seconds), read back from the token; staff.sessions_after and password changes check it. */
+export type StaffSession = { kind: "staff"; staffId: string; shopId: string; role: "owner" | "staff"; iat?: number };
 
 const BUYER = "dibs_buyer", STAFF = "dibs_staff";
 const MAX_AGE = 60 * 60 * 24 * 30;

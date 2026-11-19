@@ -50,7 +50,7 @@ export async function finishSignIn(user: AuthUser, proof: InviteProof): Promise<
   }
   await setStaff({ staffId: st.id, shopId: st.shop_id, role: st.role });
   await clearSellerClaim();
-  const me = (await sellerMe(st.id))!;
+  const me = (await sellerMe(st.id, "fresh"))!;
   if (flags.mode === "nexconn") after(() => issueToken(`s_${st.id}`, me.displayName).then(() => {}, () => {}));
   await afterWrite(null);
   return json({ needsShop: false, me });
@@ -59,7 +59,7 @@ export async function finishSignIn(user: AuthUser, proof: InviteProof): Promise<
 // ------------------------------------------------------------------ failed-login throttle
 
 const WINDOW = 15 * 60;
-export const MAX_FAILS = { email: 8, ip: 30 };
+export const MAX_FAILS = { pair: 8, ip: 30 };
 
 async function count(key: string): Promise<number> {
   const [r] = await sql<{ n: number }[]>`
@@ -68,13 +68,18 @@ async function count(key: string): Promise<number> {
   return r.n;
 }
 
-/** 429 when this email or this IP has had too many failed passwords in the current 15-minute window. */
+/**
+ * 429 when this IP has had too many failed passwords in the current 15-minute window: 8 for one email, 30 in all.
+ * Never keyed on the email alone: anyone could then lock an owner out of their own account with 8 wrong guesses.
+ * ponytail: guesses at one email spread over many IPs are slowed only by Supabase Auth's own limits; add a
+ * challenge after N failures per email if that is ever seen.
+ */
 export async function checkFails(email: string, ip: string) {
-  const [e, i] = await Promise.all([count(`pwfail:e:${email}`), count(`pwfail:ip:${ip}`)]);
-  if (e >= MAX_FAILS.email || i >= MAX_FAILS.ip) fail(429, "rate_limited", "Too many wrong passwords. Wait 15 minutes, or use “Email me a code instead”.");
+  const [e, i] = await Promise.all([count(`pwfail:ei:${email}|${ip}`), count(`pwfail:ip:${ip}`)]);
+  if (e >= MAX_FAILS.pair || i >= MAX_FAILS.ip) fail(429, "rate_limited", "Too many wrong passwords. Wait 15 minutes, or use “Email me a code instead”.");
 }
 export const noteFail = (email: string, ip: string) =>
-  Promise.all([fn("rate_add", `pwfail:e:${email}`, WINDOW), fn("rate_add", `pwfail:ip:${ip}`, WINDOW)]);
+  Promise.all([fn("rate_add", `pwfail:ei:${email}|${ip}`, WINDOW), fn("rate_add", `pwfail:ip:${ip}`, WINDOW)]);
 
 // ------------------------------------------------------------------ input
 

@@ -79,12 +79,16 @@ export async function execClub(type: string, p: Record<string, string>, live: bo
 async function barred(shopId: string, buyerId: string): Promise<boolean> {
   return (await sql`select _barred(${shopId}::uuid, ${buyerId}::uuid) as b`)[0].b === true;
 }
+/** The seller removed this buyer from the club (club_removed, 0015): they cannot join again. */
+const removed = async (shopId: string, buyerId: string) =>
+  (await sql`select 1 from club_removed where shop_id = ${shopId} and buyer_id = ${buyerId}`).length > 0;
 
 // ---------------------------------------------------------------- buyers
 
 export async function join(slug: string, buyerId: string): Promise<{ memberCount: number }> {
   const s = await shopWhere({ slug });
   if (await barred(s.id, buyerId)) fail(403, "banned", "You can't join this club.");
+  if (await removed(s.id, buyerId)) fail(403, "removed", "The seller removed you from this club.");
   const club = await ensureClub(s);
   await sql.begin(async (tx) => {
     const r = await tx`insert into club_members (shop_id, buyer_id) values (${s.id}, ${buyerId}) on conflict do nothing returning 1`;
@@ -264,7 +268,7 @@ export async function summary(slug: string, buyerId: string | null): Promise<Clu
        where o.buyer_id = ${buyerId} and o.shop_id = ${s.id} and o.state in ('paid', 'shipped')
          and not exists (select 1 from club_posts r where r.order_id = o.id)
        order by o.created_at desc limit 10`;
-    me = { userId: `b_${buyerId}`, member, banned: await barred(s.id, buyerId), reviewable };
+    me = { userId: `b_${buyerId}`, member, banned: (await barred(s.id, buyerId)) || (await removed(s.id, buyerId)), reviewable };
   }
   return {
     enabled: true,
@@ -289,7 +293,7 @@ export async function manage(shopId: string): Promise<ClubManage> {
       from club_members m join buyers b on b.id = m.buyer_id
      where m.shop_id = ${s.id} and m.joined_at >= ${since(s)} order by m.joined_at desc limit 100`;
   return {
-    clubId: s.nexconn_club_id, shopSlug: s.slug, memberCount: await memberCount(s),
+    clubId: s.nexconn_club_id, shopSlug: s.slug, isSandbox: s.is_sandbox, memberCount: await memberCount(s),
     members: members.map((m) => ({ ...m, joinedAt: m.joinedAt.toISOString() })),
     chat: await posts(s, "chat", { limit: 30 }),
     reviews: await posts(s, "review", { limit: 50, hidden: true }),
@@ -300,6 +304,7 @@ export async function manage(shopId: string): Promise<ClubManage> {
 export async function staffRemove(shopId: string, staffId: string, buyerId: string): Promise<void> {
   const s = await shopWhere({ id: shopId });
   if (!(await removeMember(s, buyerId))) notFound();
+  await sql`insert into club_removed (shop_id, buyer_id) values (${s.id}, ${buyerId}) on conflict do nothing`;
   await sql`insert into moderation_events (shop_id, buyer_id, rule, action) values (${s.id}, ${buyerId}, ${`club_member_removed_by:${staffId}`}, 'removed')`;
 }
 

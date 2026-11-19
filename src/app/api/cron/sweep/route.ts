@@ -43,11 +43,17 @@ export const GET = route("GET /api/cron/sweep", async (req: Request) => {
   // groups whose order or shop row was deleted (0014): dismiss them, or their members creep toward Nexconn's 1,000-group cap
   let dismissed = 0;
   if (flags.mode === "nexconn") {
-    const dead = await sql<{ channel_id: string }[]>`select channel_id from dead_groups limit 60`.catch(() => []);
+    const dead = await sql<{ channel_id: string; at: Date }[]>`select channel_id, at from dead_groups order by at limit 60`.catch(() => []);
     for (const g of dead) {
       if (Date.now() - t0 > 52_000) break;
       try { await dismissGroup(g.channel_id); await sql`delete from dead_groups where channel_id = ${g.channel_id}`; dismissed++; }
-      catch (e) { console.error("[cron] dismiss", g.channel_id, e instanceof Error ? e.message : e); break; }
+      catch (e) {
+        // a failing row is skipped this run and tried again on the next; one queued over a day ago is given up on,
+        // so it cannot sit at the head of the oldest-first queue for ever
+        const old = Date.now() - g.at.getTime() > 86_400_000;
+        console.error(old ? "[cron] dismiss gave up after a day" : "[cron] dismiss", g.channel_id, e instanceof Error ? e.message : e);
+        if (old) await sql`delete from dead_groups where channel_id = ${g.channel_id}`.catch(() => {});
+      }
     }
   }
   await sql`insert into health_events (kind, ok, code, ms) values ('cron_sweep', ${ok}, ${String(drops.length)}, ${Date.now() - t0})`.catch(() => {});

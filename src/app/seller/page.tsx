@@ -20,7 +20,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<{ i
     catch (e) { if (e instanceof HttpError) invite = { error: e.message }; else throw e; }
   }
   const s = await getStaff();
-  if (!invite && s && (await sellerMe(s.staffId))) redirect("/seller/drops");
+  if (!invite && s && (await sellerMe(s.staffId, s.iat))) redirect("/seller/drops");
   const claim = invite ? null : await getSellerClaim();
   return <SignIn pendingEmail={claim?.email ?? null} invite={invite} />;
 }

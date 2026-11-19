@@ -1,5 +1,6 @@
 "use client";
 // Shop details, used to create the shop (after sign-in) and to edit it (settings). Checks mirror the server's ShopFields.
+import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { Button, Card, Field, Icon, Input, useToast } from "@/components/ui";
 import { api } from "@/lib/client/api";
@@ -50,6 +51,7 @@ export function ShopForm({ initial, readOnly, onCreated, onSaved, ownerName }: {
 }) {
   const create = !initial;
   const toast = useToast();
+  const router = useRouter();
   const [f, setF] = useState<F>(() => ({
     name: initial?.name ?? "", slug: initial?.slug ?? "", ownerName: ownerName ?? "",
     upiId: initial?.upiId ?? "", payeeName: initial?.payeeName ?? "", supportWhatsapp: initial?.supportWhatsapp ?? "",
@@ -79,6 +81,7 @@ export function ShopForm({ initial, readOnly, onCreated, onSaved, ownerName }: {
       } else {
         const r = await api("PATCH /api/shops/:id", { name: f.name.trim(), logoUrl: f.logoUrl, ...toInput(f) }, { id: initial!.id });
         toast("Shop settings saved", { tone: "good" });
+        router.refresh(); // the shell's one-time "check your UPI ID" note is cleared by a save
         onSaved?.(r);
       }
     } catch (x) { setErr(errMsg(x)); } finally { setBusy(false); }

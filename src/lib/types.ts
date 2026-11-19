@@ -32,6 +32,8 @@ export type BuyerSelf = { id: string; name: string; displayName: string; phone: 
 
 export type SellerMe = {
   staffId: string; role: Role; displayName: string; email: string | null;
+  /** This owner's account had a password before the email was confirmed: ask them once to check the UPI ID and payee name. */
+  proofNotice: boolean;
   shop: { id: string; name: string; slug: string; isSandbox: boolean; deskGroupId: string | null };
 };
 
@@ -179,6 +181,7 @@ export type Api = {
   // seller session and shop
   "POST /api/seller/session": { req: { accessToken: string } | { testEmail: string }; res: { needsShop: false; me: SellerMe } | { needsShop: true; email: string } };
   "DELETE /api/seller/session": { req: undefined; res: Ok };
+  "DELETE /api/seller/notice": { req: undefined; res: Ok };
   "GET /api/seller/me": { req: undefined; res: { me: SellerMe | null; pendingEmail: string | null } };
   "POST /api/shops": { req: ShopInput; res: { shopId: string; staffId: string; me: SellerMe } };
   "GET /api/shops/:id": { req: undefined; res: ShopSettings };
@@ -281,7 +284,7 @@ export type ClubSummary = {
   me: { userId: string; member: boolean; banned: boolean; reviewable: { orderId: string; title: string; orderNo: number }[] } | null;
 };
 export type ClubManage = {
-  clubId: string | null; shopSlug: string; memberCount: number;
+  clubId: string | null; shopSlug: string; isSandbox: boolean; memberCount: number;
   members: { buyerId: string; name: string; joinedAt: string }[];
   chat: ClubPostView[]; reviews: ClubPostView[]; announcements: ClubPostView[];
 };

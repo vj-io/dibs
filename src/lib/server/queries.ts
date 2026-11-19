@@ -43,11 +43,15 @@ export async function sweep(dropId: string): Promise<boolean> {
 
 export type ActiveStaff = StaffSession & { displayName: string };
 
-/** Signed-in, still-active staff (role and shop from the database, not the cookie). */
+/**
+ * Signed-in, still-active staff (role and shop from the database, not the cookie). A cookie issued before the row's
+ * `sessions_after` is refused (compared by the second, the precision of a cookie's issue time).
+ */
 export async function activeStaff(): Promise<ActiveStaff> {
   const s = await requireStaff();
   const [row] = await sql<{ role: "owner" | "staff"; shop_id: string; display_name: string }[]>`
-    select role, shop_id, display_name from staff where id = ${s.staffId} and active`;
+    select role, shop_id, display_name from staff
+     where id = ${s.staffId} and active and (sessions_after is null or to_timestamp(${s.iat ?? 0}::float8) >= date_trunc('second', sessions_after))`;
   if (!row || row.shop_id !== s.shopId) return fail(401, "no_session", "Sign in as the seller first.");
   return { ...s, role: row.role, displayName: row.display_name };
 }
@@ -82,12 +86,18 @@ export async function staffForDrop(dropId: string): Promise<ActiveStaff> {
   return s;
 }
 
-export async function sellerMe(staffId: string): Promise<SellerMe | null> {
-  const [r] = await sql<{ id: string; role: "owner" | "staff"; display_name: string; email: string | null;
+/**
+ * `iat`: the issue time of the cookie that named this staff id (refused when older than the row's sessions_after),
+ * or "fresh" when the caller has just signed this person in.
+ */
+export async function sellerMe(staffId: string, iat: number | undefined | "fresh"): Promise<SellerMe | null> {
+  const [r] = await sql<{ id: string; role: "owner" | "staff"; display_name: string; email: string | null; notice: boolean;
     shop_id: string; name: string; slug: string; is_sandbox: boolean; nexconn_desk_id: string | null }[]>`
-    select st.id, st.role, st.display_name, st.email, s.id as shop_id, s.name, s.slug, s.is_sandbox, s.nexconn_desk_id
-      from staff st join shops s on s.id = st.shop_id where st.id = ${staffId} and st.active`;
-  return r ? { staffId: r.id, role: r.role, displayName: r.display_name, email: r.email,
+    select st.id, st.role, st.display_name, st.email, st.proof_notice_at is not null as notice,
+           s.id as shop_id, s.name, s.slug, s.is_sandbox, s.nexconn_desk_id
+      from staff st join shops s on s.id = st.shop_id where st.id = ${staffId} and st.active
+       ${iat === "fresh" ? sql`` : sql`and (st.sessions_after is null or to_timestamp(${iat ?? 0}::float8) >= date_trunc('second', st.sessions_after))`}`;
+  return r ? { staffId: r.id, role: r.role, displayName: r.display_name, email: r.email, proofNotice: r.notice,
     shop: { id: r.shop_id, name: r.name, slug: r.slug, isSandbox: r.is_sandbox, deskGroupId: r.nexconn_desk_id } } : null;
 }
 

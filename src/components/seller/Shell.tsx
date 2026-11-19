@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { Banner, Button, cx, Icon, Logo, type IconName } from "@/components/ui";
+import { Banner, Button, Card, cx, Icon, Logo, type IconName } from "@/components/ui";
 import { api } from "@/lib/client/api";
 import type { SellerMe } from "@/lib/types";
 import { MeProvider } from "./kit";
@@ -22,6 +22,8 @@ export function SellerShell({ me, children }: { me: SellerMe; children: ReactNod
   const path = usePathname();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [noticeRead, setNoticeRead] = useState(false);
+  const readNotice = () => { setNoticeRead(true); api("DELETE /api/seller/notice").then(() => router.refresh(), () => {}); };
   const signOut = async () => {
     setBusy(true);
     try { await api("DELETE /api/seller/session"); } catch { /* the cookie may already be gone */ }
@@ -57,6 +59,17 @@ export function SellerShell({ me, children }: { me: SellerMe; children: ReactNod
         </nav>
       </header>
       {me.shop.isSandbox && <Banner />}
+      {me.proofNotice && !noticeRead && (
+        <div className="mx-auto w-full max-w-7xl px-4 pt-4">
+          <Card flat tint="yellow" role="status" data-testid="proof-notice" className="flex flex-wrap items-center gap-3 p-3">
+            <p className="min-w-0 flex-1 basis-64">
+              A password was set on this account before your email was confirmed. That password no longer works. Check that the
+              UPI ID and payee name in <Link href="/seller/shop" className="font-semibold underline">your shop settings</Link> are yours.
+            </p>
+            <Button size="sm" variant="ghost" onClick={readNotice}>Got it</Button>
+          </Card>
+        </div>
+      )}
       <main id="main" className="mx-auto w-full max-w-7xl flex-1 px-4 pb-16 pt-5">{children}</main>
     </MeProvider>
   );

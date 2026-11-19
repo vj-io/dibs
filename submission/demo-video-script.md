@@ -1,52 +1,55 @@
-# Dibs: demo video script (2:45 maximum, narrated)
+# Dibs: demo video script (v2, 2:57, narrated)
 
 Team **Kaching** · Vaibhav Jangid · Nexconn Build Challenge 2026 · Track: Marketplace & Support
 
-Style: documentary voiceover, one continuous track with no pauses, fast cuts (a new picture every 2 to 4 seconds), animation on the cuts. Recorded on the deployed app, https://tapdibs.vercel.app. Narration is about 425 words including the end slide, which is 2.6 words a second over 2:45: brisk, with no room for pauses. Read it once against a stopwatch. If it runs past 2:45, cut the last sentence of beats 3, 4 or 7 first.
+This is the plan the current cut follows: `submission/video/dibs-demo.mp4`. The first cut (2:34) is kept as `submission/video/dibs-demo-v1.mp4`. The exact spoken lines with their times are in `submission/video/narration.txt`.
+
+Style: documentary voiceover, one continuous track with no pauses (no gap of 0.45 s or longer in the voice), fast, animation on every beat, doodle look (paper, ink, lime, hot pink). 31 lines, 560 words. Captions for every line are burned in.
 
 ## Honesty rules for this video
 
-- Nothing on screen is faked. Every app picture is a real screen recording of the deployed app.
-- Every bot is labelled 🤖 on screen (the banner "Demo room · 40 🤖 demo buyers · nothing here is real money" stays visible in the demo cuts).
-- Beat 3 uses two real browser windows on a drop the team created. Caption it "Team test drop · two browser windows". It is not a real seller and not real buyers.
-- No real drop has run, so the video shows no real numbers. Do not add any.
-- Latency numbers come from `docs/NEXCONN_FINDINGS.md` and are captioned "proof of concept, one machine in India".
-- If you show a tap time, use only the measured one: a single warm tap took 149 to 217 ms from a laptop (caption "warm tap, one laptop, synthetic load test"). Do not show the burst median (2.8 s) as a normal tap; if you mention the load test, say it was 300 synthetic taps at 2 units with zero double sells, and that phones on 4G are not measured.
+- Every app picture is a real screen. Scenes 3, 4, 5, 9 and the first half of 7 were recorded on the deployed app, https://tapdibs.vercel.app, on 19 Nov 2026, and carry a "real screen" tag.
+- Scene 6 (new seller) and the second half of scene 7 (club post reaching a member) are screenshots from the project's own end-to-end runs on a test build with sample data. They are tagged "screenshot · local test build · sample data" and "screenshot · test run · synthetic member", and the address bar shows `localhost`. Nothing says or implies they are production. The staff invite link is covered.
+- Every bot is labelled 🤖 on screen and the app's own banner "Demo room · 40 🤖 demo buyers · nothing here is real money" stays in the demo cuts. The payment card shown is the demo one ("Demo shop: nothing to pay", with "Pay with UPI (demo)" switched off).
+- Footage that is sped up, slowed or paused says so in a tag under the screen.
+- No real drop has run and the club has no real members. The end card and the club scene say so. No real users, sales or money are shown or implied.
+- Not claimed anywhere: video calling, a Hindi interface, or blocking a message before delivery. The scam scene says the message is deleted just after delivery, because pre-message blocking is not on our Nexconn plan.
 
-## Beats
+## Numbers used, and where each comes from
 
-| # | Time | On screen | Narration (exact) |
+| Number | Where it appears | Source |
+| --- | --- | --- |
+| 40 demo bots; try it in 60 seconds | scenes 3 and 10 | README.md, "Try it in 60 seconds" |
+| Bot hold runs out after 12 s | scene 3 | README.md, same section |
+| "23 seconds after my tap" (on screen also: 22 to 27 s over 25 simulated runs) | scene 3 | this recording (tap at 14.72 s, "It's yours" at 37.88 s); the range is from README.md |
+| 300 synthetic taps inside 504 ms on 2 units; 2 winners; 200 waitlisted; 98 "waitlist full"; 0 errors; 8 of 8 database invariants; 19 Nov 2026 | scene 8 | README.md "Load test", docs/WRITEUP.md |
+| Both winning taps 163 ms and 181 ms, from one laptop ("under 200 ms" in the voice) | scene 8 | same |
+| Shop club median delivery 213 ms, 10 of 10, our test, 19 Nov 2026 | scene 7 | README.md "Shop club" |
+
+The first cut's "about 0.4 seconds" card latency line is removed.
+
+## Scenes
+
+| # | Time | On screen | Narration (summary; exact text in narration.txt) |
 | --- | --- | --- | --- |
-| 1 | 0:00 to 0:14 | A WhatsApp-style group scrolling fast with "booked!!", "me first", "did you see mine?" (a drawn mock-up, captioned "illustration"). Two arrows point at one bangle. | Small sellers run drops in WhatsApp groups and comments. Two people say booked. Who was first? Nobody can prove it. Orders end up in a notebook, and slow replies send buyers away. |
-| 2 | 0:14 to 0:30 | Title card "Dibs" with the pitch line. Cut to the seller console on a laptop and a phone sale room side by side. | This is Dibs. First tap wins. Everyone sees it. Nobody gets lost in the DMs. The seller drops one piece, and the whole room sees it at once, with the photo, the price, and the stock for each size. |
-| 3 | 0:30 to 0:58 | Two real browser windows, buyer A and buyer B, caption "Team test drop · two browser windows". The seller presses Drop next. Both tap Dibs. A shows "You got it! Pay within 10:00". B shows "You're #1 on the waitlist". The ticker shows "Sold to … · 0.4 s" in both. | Two buyers tap together. The server decides, not a phone. One locked database transaction puts the taps in order. One buyer gets it. The other is number one on the waitlist. Everyone sees who won and how fast. No arguments, no screenshots, no he-said-she-said. And the tap works on a cheap phone with one thumb, with no app to install, and no password to remember. |
-| 4 | 0:58 to 1:18 | The judge demo at /try: tap "Be a buyer". Banner with 40 🤖 demo buyers. The judge taps, lands on the waitlist "You're #3". Cut to bot holds counting down, then "It's yours! The buyer ahead didn't pay". | Judges can try it alone. Forty demo buyers, each marked with a robot, tap at set delays through the same claim code. They never pay. Their holds run out, and you are promoted automatically, with a private alert that says it is yours. The waitlist is not a promise. It is a queue the server keeps in order, and it moves the moment someone drops out. |
-| 5 | 1:18 to 1:38 | The order room: order card, UPI payment card with "Pay only here, never to a number in chat", "Seen" on a message, "I've paid" tapped, the demo staff member confirms, timeline moves to Paid. | Every winner gets one private order chat with the team. A UPI card, read receipts, and a clear status from held, to paid, to shipped. The buyer pays the seller directly, and the seller confirms. Nothing gets lost in the DMs, and Dibs never touches the money, so there is nothing to refund. |
-| 6 | 1:38 to 1:52 | Sale room chat: a demo bot posts a fake UPI ID. The message disappears. The sender sees the block notice. The seller's moderation log shows the entry. | If someone posts a phone number or UPI ID in the room, the scam shield removes it for everyone within seconds. Fake pay-me-here messages never reach buyers, and the seller sees what was blocked, without the message text being stored. |
-| 7 | 1:52 to 2:12 | Seller console in "Be the seller": claims ledger filling, waitlist counts, Drop next, a hold expiring and the promotion in the ledger, the team desk with orders, Mark paid, Mark shipped, mute a bot. | The seller runs it all from one console. Taps, holds and waitlists fill live. Orders land on the team desk. Mark paid, mark shipped, mute anyone. If a winner does not pay, the console shows the hold run out and the next buyer step in, with no seller action at all. One screen, one sale, and no notebook. |
-| 8 | 2:12 to 2:30 | The /how-it-works feature map, scrolling fast. Captions pop on three rows: "Custom cards from dibs_bot · median 436 ms, n=20", "Order rooms · group channels", "Read receipts". Then a diagram: browser, one Postgres transaction, outbox, Nexconn, every browser. | Everything live runs on Nexconn. Open channels for the room. Group channels for orders. Custom cards from the server bot, a median of four hundred thirty-six milliseconds in our proof of concept. Read receipts. Mute and ban. Server-side delete. |
-| 9 | 2:30 to 2:45 | End slide (variant A or B below). | See end slide. |
+| 1 | 0:00 to 0:12 | Drawn group chat flooding with "booked!!", captioned "illustration · not a real chat". | Sellers run drops in group chats; two people say booked; nobody can prove who was first. |
+| 2 | 0:12 to 0:25 | Title, then the real seller console and a real buyer phone at the moment of Drop next. | This is Dibs. First tap wins. Built on the Nexconn Chat SDK. |
+| 3 | 0:25 to 1:13 | Production `/try` → Be a buyer. 40 🤖 bots, piece 1 drops, "#3 on the waitlist", the ticker, the server-decides sketch, bot holds expiring after 12 s, "It's yours" 23 s after the tap, the order room, the demo payment card, I've paid, "Paid · confirmed by Asha (demo staff)". | The judge demo; the server decides in one locked transaction; bots never pay; the queue moves; Dibs never touches the money; the demo has nothing to pay. |
+| 4 | 1:13 to 1:22 | Production room chat: a UPI ID is posted and deleted, the notice appears. | The scam shield removes it for everyone within seconds. |
+| 5 | 1:22 to 1:43 | Production `/try` → Be the seller: Drop next, the claims ledger with 🤖 Demo buyer pills and "🤖 demo payment", a hold expiring and "from waitlist", the Desk tab (mark paid, mark shipped, Download CSV), the Dashboard tab. | The console, the ledger, promotion with no seller action, the team desk, the CSV, the dashboard. |
+| 6 | 1:43 to 2:00 | Test-build screenshots: create account, the three-step wizard, the share kit (English and Hinglish text, QR PNG, rehearse link), the staff invite. | Password account with no email step, three short steps, the share kit, staff invite link. |
+| 7 | 2:00 to 2:14 | Production seller Club tab and buyer club page of the demo shop (0 members), then test-run screenshots of a post reaching a member; "213 ms"; "No real club members yet." | A club per shop on a Nexconn community channel: #drops, #chat, #reviews; median delivery 213 ms in our test. |
+| 8 | 2:14 to 2:33 | Drawn funnel of 300 dots into 2 units, result tiles, then "8 of 8 database invariants passed" and the two winning-tap times. | The synthetic load test on production. |
+| 9 | 2:33 to 2:45 | The real `/how-it-works` feature map, camera moving card to card, a checklist of seven Nexconn features. | Everything live runs on Nexconn, now with a community channel for the club. |
+| 10 | 2:45 to 2:57 | End card: "Dibs! First tap wins", `tapdibs.vercel.app/try`, Nexconn App Key `qd46yzrfq1obf`, repository, team, and "No real drop has run yet. Demo rooms use labelled 🤖 bots." | Try it yourself in sixty seconds. |
 
-## End slide
+Dropped from the first cut to make room: the notebook beat, the "no app, no password" checklist, the piece 2 win and the moderation-log beat.
 
-Pick one. Variant A is the default and is true today. Use variant B only after a real drop has happened and the numbers come from the database.
+## How to rebuild it
 
-**Variant A: no real drop yet**
+Everything is in `submission/video/work/`. `build.sh` runs the whole chain (add `voice` to re-synthesise): `vo/vo.sh` (voice), `gen_footage.py` (frame index and stills), `patch.py` (first-cut page plus `mid.js` and `g.js` gives `dibs.html`), the slideshow audit, the read check, `score.py` (music), the mix and the render. The production recordings are in `work/cap2/` and were made with `rec.py`, `rec2.py` and `full.py`, one demo room at a time.
 
-On screen: "Dibs · First tap wins" · "Try it: tapdibs.vercel.app/try" · "Nexconn App Key: qd46yzrfq1obf" · "Team Kaching · Vaibhav Jangid" · small line: "No real drop has run yet. Planned first drop: a jewellery seller who already sells on WhatsApp."
+## Upload checklist
 
-Narration: Built on the Nexconn Chat SDK, with AI coding agents under our direction. No real drop has run yet. The first is planned with a jewellery seller on WhatsApp. Try it now. Dibs. First tap wins.
-
-**Variant B: after a real drop (only if it happened)**
-
-On screen: the same links, plus "Real drop: TBD-after-measurement buyers · TBD-after-measurement claims · TBD-after-measurement paid orders", taken from `/impact` and the database, real buyers only, never bots.
-
-Narration: A real drop by a real jewellery seller. TBD-after-measurement buyers, TBD-after-measurement claims, TBD-after-measurement paid orders, straight from the database. Built on the Nexconn Chat SDK, with AI coding agents under our direction. Dibs. First tap wins.
-
-## Recording checklist
-
-1. Record on the deployed app (`/try` returned 200 when last checked). Check it in a fresh private window first. In the demo a human gets 90 seconds to pay and bots 20; piece 2 goes live only after you are back in the room.
-2. For beat 3, create a team test shop and drop. Use two browser windows, one per buyer. Keep the caption on screen.
-3. Keep the demo banner visible in beats 4, 5, 6 and 7.
-4. Voiceover: one continuous track. Listen once end to end for pronunciation of "dibs_bot" ("dibs bot") and "UPI" ("you-pee-eye").
-5. Upload to YouTube as Unlisted (or Loom or Vimeo), anyone with the link, test it in a private window, paste it into the form.
+1. Watch it once end to end with sound, checking the pronunciation of "UPI", "QR", "CSV" and "Kaching".
+2. Upload to YouTube as Unlisted (or Loom or Vimeo), anyone with the link, test it in a private window, paste the link into the form.

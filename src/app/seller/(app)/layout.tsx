@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export default async function SellerAppLayout({ children }: { children: React.ReactNode }) {
   const s = await getStaff();
-  const me = s ? await sellerMe(s.staffId) : null;
+  const me = s ? await sellerMe(s.staffId, s.iat) : null;
   if (!me) redirect("/seller");
   return <SellerShell me={me}>{children}</SellerShell>;
 }

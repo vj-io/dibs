@@ -171,12 +171,47 @@ test("shop club: join, chat, announce, review, moderation and permissions", asyn
   ok(nb, 403);
   assert.equal(nb.body.error, "banned");
 
+  // a member the seller removed cannot join again
+  const back = await b1.c.post("/api/club/join", { shopSlug: A.slug });
+  ok(back, 403);
+  assert.equal(back.body.error, "removed");
+  assert.equal((await b1.c.get(`/api/club/${A.slug}`)).body.me.banned, true);
+  assert.equal((await anon.get(`/api/club/${A.slug}`)).body.memberCount, 0);
+
   // leave
-  ok(await b1.c.post("/api/club/join", { shopSlug: A.slug }));
-  const lv = await b1.c.post("/api/club/leave", { shopSlug: A.slug });
+  const b3 = await buyer(A.slug, "Kiran Rao");
+  ok(await b3.c.post("/api/club/join", { shopSlug: A.slug }));
+  const lv = await b3.c.post("/api/club/leave", { shopSlug: A.slug });
   ok(lv);
   assert.equal(lv.body.memberCount, 0);
-  ok(await b1.c.post("/api/club/send", { shopSlug: A.slug, text: "still here?" }), 403);
+  ok(await b3.c.post("/api/club/send", { shopSlug: A.slug, text: "still here?" }), 403);
+
+  // join and leave: 6 a minute per buyer each
+  for (let i = 0; i < 5; i++) ok(await b3.c.post("/api/club/join", { shopSlug: A.slug }));
+  ok(await b3.c.post("/api/club/join", { shopSlug: A.slug }), 429);
+  for (let i = 0; i < 5; i++) ok(await b3.c.post("/api/club/leave", { shopSlug: A.slug }));
+  ok(await b3.c.post("/api/club/leave", { shopSlug: A.slug }), 429);
+});
+
+test("demo shop: staff cannot post, remove or hide in its public club; the manage screen still loads and says it is a demo", async () => {
+  const A = await seller();
+  const b = await buyer(A.slug);
+  ok(await b.c.post("/api/club/join", { shopSlug: A.slug }));
+  await admin`update shops set is_sandbox = true where id = ${A.shopId}`; // what a judge-mode demo shop is
+  try {
+    for (const [path, body] of [["announce", { text: "pay to scam@upi" }], ["remove", { buyerId: b.id }], ["hide", { reviewId: "1", reason: "because" }]] as const) {
+      const r = await A.c.post(`/api/club/${path}`, body);
+      ok(r, 403);
+      assert.equal(r.body.error, "demo_read_only");
+    }
+    const m = await A.c.get("/api/club/manage");
+    ok(m);
+    assert.equal(m.body.isSandbox, true);
+    assert.equal(m.body.memberCount, 1, "the member is still there");
+    assert.equal((await new Client().get(`/api/club/${A.slug}`)).body.announcements.length, 0, "nothing reached the public page");
+  } finally {
+    await admin`update shops set is_sandbox = false where id = ${A.shopId}`;
+  }
 });
 
 test("webhook: club texts are picked out of message:send with their subchannel; room texts are not", async () => {

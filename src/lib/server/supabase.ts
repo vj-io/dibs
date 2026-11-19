@@ -5,7 +5,10 @@ import { createHash, randomBytes } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { sql } from "./db.ts";
+import { flags } from "./flags.ts";
 import { fail } from "./http.ts";
+import { expireTokens } from "./nexconn.ts";
 
 export const PHOTO_BUCKET = "product-photos";
 
@@ -31,14 +34,21 @@ const key = () => {
 /**
  * Verifies a Supabase access token (after email OTP: this proves the person controls the inbox). 401 when invalid.
  * A password set without that proof (password sign-up, invite link: app_metadata.dibs_pw_unproven) is replaced with a
- * random one here, so whoever squatted an email with a password loses it the moment the inbox owner signs in.
+ * random one here, so whoever squatted an email with a password loses it the moment the inbox owner signs in. The
+ * same moment (staff_proved, 0015): every older staff cookie of the account stops working, an owner keeps the shop
+ * and gets a one-time note to check its UPI ID and payee name, an active staff seat is kept, a seat the shop owner
+ * had removed is moved off this user id (so the person can create their own shop), chat tokens issued to the
+ * account expire, and a leftover 30-minute seller cookie stops creating shops (`dibs_proven_at`, see claimCurrent).
  */
 export async function userFromToken(accessToken: string): Promise<AuthUser> {
   const { data, error } = await service().auth.getUser(accessToken);
   if (error || !data.user?.email) return fail(401, "bad_token", "That sign-in link has expired. Ask for a new code.");
   if (data.user.app_metadata?.dibs_pw_unproven) {
+    // the flag is cleared last: if anything before it fails, the next sign-in by code runs all of this again
+    await sql`select staff_proved(${data.user.id})`;
+    if (flags.mode === "nexconn") await expireTokens([`s_${data.user.id}`]).catch((e) => console.error("[auth] expire chat token", e instanceof Error ? e.message : e));
     const { error: e2 } = await service().auth.admin.updateUserById(data.user.id, {
-      password: randomBytes(24).toString("base64url"), app_metadata: { dibs_pw_unproven: false },
+      password: randomBytes(24).toString("base64url"), app_metadata: { dibs_pw_unproven: false, dibs_proven_at: Math.floor(Date.now() / 1000) },
     });
     if (e2) throw new Error(`password reset after inbox proof failed: ${e2.code ?? e2.status}`);
   }
@@ -116,13 +126,22 @@ export async function setSellerClaim(u: AuthUser) {
     .setIssuedAt().setExpirationTime("30m").sign(key());
   (await cookies()).set(SELLER, token, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 1800 });
 }
-export async function getSellerClaim(): Promise<AuthUser | null> {
+/**
+ * false when the inbox owner proved this email after the claim cookie was issued (to the second): the cookie is what
+ * a password squatter still holds for up to 30 minutes. Test sign-ins have no Auth user: nothing to check.
+ */
+export async function claimCurrent(claim: { id: string; iat?: number }): Promise<boolean> {
+  const { data } = await service().auth.admin.getUserById(claim.id);
+  const at = data?.user?.app_metadata?.dibs_proven_at;
+  return typeof at !== "number" || (claim.iat ?? 0) >= at;
+}
+export async function getSellerClaim(): Promise<(AuthUser & { iat?: number }) | null> {
   const token = (await cookies()).get(SELLER)?.value;
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, key(), { algorithms: ["HS256"] });
     return payload.kind === "seller" && typeof payload.uid === "string" && typeof payload.email === "string"
-      ? { id: payload.uid, email: payload.email } : null;
+      ? { id: payload.uid, email: payload.email, iat: payload.iat } : null;
   } catch { return null; }
 }
 export const clearSellerClaim = async () => { (await cookies()).delete(SELLER); };

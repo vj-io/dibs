@@ -5,16 +5,17 @@ import { sql } from "@/lib/server/db";
 import { body, fail, json, route } from "@/lib/server/http";
 import { deskIdFor, isShopPhoto, sellerMe, ShopFields } from "@/lib/server/queries";
 import { getStaff, setStaff } from "@/lib/server/session";
-import { clearSellerClaim, getSellerClaim } from "@/lib/server/supabase";
+import { claimCurrent, clearSellerClaim, getSellerClaim } from "@/lib/server/supabase";
 
 export const dynamic = "force-dynamic";
 
 const Body = ShopFields.required({ name: true, slug: true }).extend({ ownerName: z.string().trim().min(1).max(40).optional() });
 
 export const POST = route("POST /api/shops", async (req: Request) => {
-  if (await getStaff().then((s) => s && sellerMe(s.staffId))) fail(409, "has_shop", "You already have a shop.");
+  if (await getStaff().then((s) => s && sellerMe(s.staffId, s.iat))) fail(409, "has_shop", "You already have a shop.");
   const user = (await getSellerClaim()) ?? fail(401, "no_session", "Sign in with your email first.");
   const b = await body(req, Body);
+  if (!(await claimCurrent(user))) fail(401, "no_session", "Sign in with your email first.");
   const [taken] = await sql`select 1 from shops where slug = ${b.slug}`;
   if (taken) fail(409, "slug_taken", "That shop link is taken. Try another.");
   const [removed] = await sql`select 1 from staff where id = ${user.id}`;
@@ -43,5 +44,5 @@ export const POST = route("POST /api/shops", async (req: Request) => {
   await setStaff({ staffId: user.id, shopId: ids.shopId, role: "owner" });
   await clearSellerClaim();
   await afterWrite(null);
-  return json({ shopId: ids.shopId, staffId: user.id, me: (await sellerMe(user.id))! });
+  return json({ shopId: ids.shopId, staffId: user.id, me: (await sellerMe(user.id, "fresh"))! });
 });

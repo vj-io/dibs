@@ -1,5 +1,6 @@
 // Email + password sign-in, checked with Supabase Auth on the server. One answer for every failure (no hint whether
-// the email has an account); failures are counted per email and per IP and refused for 15 minutes past the limit.
+// the email has an account); failures are counted per IP (for one email, and in all) and refused for 15 minutes
+// past the limit. The email alone is never the key, so wrong guesses from elsewhere cannot lock the owner out.
 import { z } from "zod";
 import { body, clientIp, fail, route } from "@/lib/server/http";
 import { passwordUser } from "@/lib/server/supabase";

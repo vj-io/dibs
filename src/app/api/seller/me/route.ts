@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export const GET = route("GET /api/seller/me", async () => {
   const s = await getStaff();
-  const me = s ? await sellerMe(s.staffId) : null;
+  const me = s ? await sellerMe(s.staffId, s.iat) : null;
   const claim = me ? null : await getSellerClaim();
   return json({ me, pendingEmail: claim?.email ?? null });
 });

@@ -59,10 +59,11 @@ async function newShop(c: Client, name = "Pw Shop") {
   return r.body as { shopId: string; staffId: string };
 }
 async function testOwner() {
-  const c = new Client();
-  ok(await c.post("/api/seller/session", { testEmail: email("owner") }));
-  return { c, ...(await newShop(c, "Invite Shop")) };
+  const c = new Client(), em = email("owner");
+  ok(await c.post("/api/seller/session", { testEmail: em }));
+  return { c, em, ...(await newShop(c, "Invite Shop")) };
 }
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const authH = { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, "Content-Type": "application/json" };
 async function authUsers(): Promise<{ id: string; email: string }[]> {
@@ -79,6 +80,16 @@ before(async () => {
   const r = await fetch(BASE + "/api/config").catch(() => null);
   assert.ok(r?.ok, `server not reachable at ${BASE}`);
 });
+
+/** Signing in by emailed code (the inbox proof) without sending an email: an admin link gives the code, Supabase verifies it. */
+async function codeSignIn(em: string) {
+  const link = await (await fetch(`${SB}/auth/v1/admin/generate_link`, { method: "POST", headers: authH, body: JSON.stringify({ type: "magiclink", email: em }) })).json() as J;
+  const v = await (await fetch(`${SB}/auth/v1/verify`, { method: "POST", headers: { apikey: ANON, "Content-Type": "application/json" },
+    body: JSON.stringify({ type: "email", email: em, token: link.email_otp ?? link.properties?.email_otp }) })).json() as J;
+  assert.ok(v.access_token, JSON.stringify(v).slice(0, 200));
+  const c = new Client();
+  return { c, r: await c.post("/api/seller/session", { accessToken: v.access_token }) };
+}
 
 after(async () => {
   const users = await authUsers();
@@ -134,13 +145,19 @@ describe("password accounts", () => {
     ok(await new Client().post("/api/seller/login", { email: em, password: "brand new password" }));
   });
 
-  test("failed logins are throttled per email (even from a new IP, even with the right password)", async () => {
+  test("8 wrong passwords block that IP for the email (even with the right one), never the owner signing in from elsewhere", async () => {
     const c = new Client(), em = email("throttle");
     ok(await c.post("/api/seller/signup", { email: em, password: PW, name: "T" }));
-    for (let i = 0; i < 8; i++) ok(await new Client().post("/api/seller/login", { email: em, password: `wrong ${i}` }), 401);
-    const blocked = await new Client().post("/api/seller/login", { email: em, password: PW });
+    const attacker = new Client();
+    for (let i = 0; i < 8; i++) ok(await attacker.post("/api/seller/login", { email: em, password: `wrong ${i}` }), 401);
+    const blocked = await attacker.post("/api/seller/login", { email: em, password: PW });
     ok(blocked, 429);
     assert.equal(blocked.body.error, "rate_limited");
+    // 8 more wrong guesses, each from another IP: the email itself is never locked
+    for (let i = 0; i < 8; i++) ok(await new Client().post("/api/seller/login", { email: em, password: `wrong again ${i}` }), 401);
+    const owner = await new Client().post("/api/seller/login", { email: em, password: PW });
+    ok(owner);
+    assert.equal(owner.body.email, em);
   });
 
   test("failed logins are throttled per IP", async () => {
@@ -163,13 +180,86 @@ describe("password accounts", () => {
   test("an emailed code (inbox proof) drops a password set without that proof", async () => {
     const c = new Client(), em = email("squat");
     ok(await c.post("/api/seller/signup", { email: em, password: PW, name: "Squatter" }));
-    // what the code path does, without sending an email: an admin link gives the code, Supabase verifies it
-    const link = await (await fetch(`${SB}/auth/v1/admin/generate_link`, { method: "POST", headers: authH, body: JSON.stringify({ type: "magiclink", email: em }) })).json() as J;
-    const v = await (await fetch(`${SB}/auth/v1/verify`, { method: "POST", headers: { apikey: ANON, "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "email", email: em, token: link.email_otp ?? link.properties?.email_otp }) })).json() as J;
-    assert.ok(v.access_token, JSON.stringify(v).slice(0, 200));
-    ok(await new Client().post("/api/seller/session", { accessToken: v.access_token }));
+    ok((await codeSignIn(em)).r);
     ok(await new Client().post("/api/seller/login", { email: em, password: PW }), 401);
+  });
+
+  test("inbox proof takes the account back from a password squatter: their cookie dies everywhere; the owner keeps the shop and is told once to check it", async () => {
+    const sq = new Client(), em = email("squatshop");
+    ok(await sq.post("/api/seller/signup", { email: em, password: PW, name: "Squatter" }));
+    const shop = await newShop(sq, "Pw Shop");
+    ok(await sq.get("/api/desk"));
+    await sleep(1100); // cookie issue times are whole seconds
+
+    const { c: real, r } = await codeSignIn(em);
+    ok(r);
+    assert.equal(r.body.needsShop, false, "an owner who forgot the password and used a code keeps the shop");
+    assert.equal(r.body.me.shop.id, shop.shopId);
+    assert.equal(r.body.me.staffId, shop.staffId);
+    assert.equal(r.body.me.proofNotice, true, "told once to check the UPI ID and payee name");
+    ok(await real.get("/api/desk"));
+    assert.equal((await real.get("/api/seller/me")).body.me.proofNotice, true);
+
+    // every cookie from before the proof is refused, on every kind of staff route
+    ok(await sq.get("/api/desk"), 401);
+    ok(await sq.get(`/api/shops/${shop.shopId}`), 401);
+    ok(await sq.post("/api/products/samples"), 401);
+    ok(await sq.post("/api/seller/password", { password: "squatter again" }), 401);
+    ok(await sq.call("PATCH", `/api/shops/${shop.shopId}`, { upiId: "squat@upi" }), 401);
+    ok(await sq.post("/api/nexconn/token", { as: "staff" }), 401); // the chat identity
+    ok(await real.post("/api/nexconn/token", { as: "staff" }));
+    assert.equal((await sq.get("/api/seller/me")).body.me, null);
+
+    // the note goes when it is dismissed, or when the shop settings are saved
+    ok(await real.del("/api/seller/notice"));
+    assert.equal((await real.get("/api/seller/me")).body.me.proofNotice, false);
+    await admin`update staff set proof_notice_at = now() where id = ${shop.staffId}`;
+    ok(await real.call("PATCH", `/api/shops/${shop.shopId}`, { upiId: "real@upi", payeeName: "Real Owner" }));
+    assert.equal((await real.get("/api/seller/me")).body.me.proofNotice, false);
+
+    const again = await codeSignIn(em); // proved once: a later code sign-in cuts nothing and shows no note
+    ok(again.r);
+    assert.equal(again.r.body.me.shop.id, shop.shopId);
+    assert.equal(again.r.body.me.proofNotice, false);
+    ok(await real.get("/api/desk"));
+  });
+
+  test("a squatter's leftover 30-minute seller cookie cannot create a shop once the inbox owner has signed in", async () => {
+    const sq = new Client(), em = email("squatclaim");
+    const s = await sq.post("/api/seller/signup", { email: em, password: PW, name: "Squatter" });
+    ok(s);
+    assert.equal(s.body.needsShop, true);
+    await sleep(1100); // cookie issue times are whole seconds
+    const { c: real, r } = await codeSignIn(em);
+    ok(r);
+    const late = await sq.post("/api/shops", { name: "Late Squat", slug: `t-${RUN}-${++n}`, upiId: "squat@upi", payeeName: "Squat" });
+    ok(late, 401);
+    assert.equal((await admin`select 1 from staff where email = ${em}`).length, 0);
+    await newShop(real, "Real Shop");
+  });
+
+  test("a staff cookie issued before staff.sessions_after is refused; signing in again works", async () => {
+    const A = await testOwner();
+    await sleep(1100);
+    await admin`update staff set sessions_after = now() where id = ${A.staffId}`;
+    ok(await A.c.get("/api/desk"), 401);
+    ok(await A.c.post("/api/products/samples"), 401);
+    const c = new Client();
+    ok(await c.post("/api/seller/session", { testEmail: A.em }));
+    ok(await c.get("/api/desk"));
+  });
+
+  test("setting a password needs a sign-in in the last 15 minutes, not just a 30-day cookie", async () => {
+    const A = await testOwner();
+    const key = new TextEncoder().encode(process.env.SESSION_SECRET!);
+    const old = await new SignJWT({ kind: "staff", staffId: A.staffId, shopId: A.shopId, role: "owner" }).setProtectedHeader({ alg: "HS256" })
+      .setIssuedAt(Math.floor(Date.now() / 1000) - 3600).setExpirationTime("30d").sign(key);
+    const c = new Client();
+    c.jar.set("dibs_staff", old);
+    ok(await c.get("/api/desk")); // an hour-old session still works
+    const r = await c.post("/api/seller/password", { password: "brand new password" });
+    ok(r, 403);
+    assert.equal(r.body.error, "reauth");
   });
 });
 
@@ -253,6 +343,45 @@ describe("staff invite links", () => {
     const join = await new Client().post("/api/seller/invite", { token, password: PW });
     ok(join);
     assert.equal(join.body.me.shop.id, A.shopId);
+  });
+});
+
+describe("invite link opened by someone else", () => {
+  test("an owner who accepts a victim's invite themselves loses that session when the victim proves the inbox; a removed seat no longer blocks the victim", async () => {
+    const A = await testOwner();
+    const em = email("victim");
+    const inv = await A.c.post(`/api/shops/${A.shopId}/staff`, { email: em, name: "Victim" });
+    ok(inv);
+    const fake = new Client(); // the owner, holding the link they made
+    const join = await fake.post("/api/seller/invite", { token: new URL(inv.body.inviteUrl).searchParams.get("invite"), password: PW });
+    ok(join);
+    ok(await fake.get("/api/desk"));
+    await sleep(1100); // cookie issue times are whole seconds
+
+    const { c: victim, r } = await codeSignIn(em); // the invited person: the seat is theirs, the earlier session is not
+    ok(r);
+    assert.equal(r.body.needsShop, false);
+    assert.equal(r.body.me.shop.id, A.shopId);
+    assert.equal(r.body.me.role, "staff");
+    assert.equal(r.body.me.proofNotice, false, "the note is for owners");
+    ok(await victim.get("/api/desk"));
+    ok(await fake.get("/api/desk"), 401);
+    assert.equal((await fake.get("/api/seller/me")).body.me, null);
+    ok(await new Client().post("/api/seller/login", { email: em, password: PW }), 401);
+
+    // a seat the owner removed before the proof: the victim's account used to be stuck on account_removed for good
+    const em2 = email("victim");
+    const inv2 = await A.c.post(`/api/shops/${A.shopId}/staff`, { email: em2, name: "Victim Two" });
+    ok(inv2);
+    const join2 = await new Client().post("/api/seller/invite", { token: new URL(inv2.body.inviteUrl).searchParams.get("invite"), password: PW });
+    ok(join2);
+    ok(await A.c.del(`/api/shops/${A.shopId}/staff/${join2.body.me.staffId}`));
+    const v2 = await codeSignIn(em2);
+    ok(v2.r);
+    assert.deepEqual(v2.r.body, { needsShop: true, email: em2 });
+    const mine = await newShop(v2.c, "Victim Two Shop");
+    assert.equal(mine.staffId, join2.body.me.staffId);
+    ok(await v2.c.get("/api/desk"));
   });
 });
 

@@ -94,6 +94,11 @@ export async function issueToken(userId: string, name: string): Promise<string> 
   return String(b.result?.accessToken ?? "");
 }
 
+/** Tokens these users were given before now stop working for new connections (a connected client stays connected). */
+export async function expireTokens(userIds: string[]): Promise<void> {
+  await call("token_expire", "/v4/auth/access-token/expire", { userIds, expiresAt: Date.now() });
+}
+
 let botReady: Promise<unknown> | undefined;
 /** dibs_bot must exist as a user before it sends. Once per instance. */
 export const ensureBot = () =>
@@ -114,7 +119,8 @@ export async function liveIdentity(as?: "buyer" | "staff"): Promise<{ userId: st
     return { userId: `b_${b.buyerId}`, name: row.display_name || "Buyer" };
   }
   if (pick === "staff" && s) {
-    const [row] = await sql<{ display_name: string | null }[]>`select display_name from staff where id = ${s.staffId} and active`;
+    const [row] = await sql<{ display_name: string | null }[]>`select display_name from staff
+      where id = ${s.staffId} and active and (sessions_after is null or to_timestamp(${s.iat ?? 0}::float8) >= date_trunc('second', sessions_after))`;
     if (!row) fail(401, "no_session", "Sign in as the seller first.");
     return { userId: `s_${s.staffId}`, name: row.display_name || "Staff" };
   }

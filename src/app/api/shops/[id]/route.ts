@@ -15,7 +15,7 @@ export const GET = route("GET /api/shops/:id", async (_req: Request, ctx: Ctx) =
 
 export const PATCH = route("PATCH /api/shops/:id", async (req: Request, ctx: Ctx) => {
   const id = await uuidParam(ctx, "id");
-  await requireOwner(id);
+  const owner = await requireOwner(id);
   const b = await body(req, ShopFields);
   if (b.logoUrl && !isShopPhoto(id, b.logoUrl)) fail(400, "invalid", "logoUrl: upload the logo first.");
   if (b.slug) {
@@ -38,5 +38,6 @@ export const PATCH = route("PATCH /api/shops/:id", async (req: Request, ctx: Ctx
     await sql`update shops set ${sql(set as Record<string, never>)} where id = ${id}`
       .catch((e: { code?: string }) => e?.code === "23505" ? fail(409, "slug_taken", "That shop link is taken. Try another.") : Promise.reject(e));
   }
+  await sql`update staff set proof_notice_at = null where id = ${owner.staffId} and proof_notice_at is not null`; // they have been through the settings
   return json(await shopSettings(id));
 });

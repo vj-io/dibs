@@ -56,6 +56,12 @@ export function ClubManage() {
         <LinkButton variant="ghost" href={`/s/${d.shopSlug}/club`} icon="eye">Open the buyer page</LinkButton>
       </div>
 
+      {d.isSandbox && (
+        <p role="status" data-testid="club-demo-note" className="rounded-wobble border-2 border-ink/20 p-3 font-semibold">
+          Demo: read-only. Posting, removing members and hiding reviews work in your own shop.
+        </p>
+      )}
+
       <div className="grid gap-5 lg:grid-cols-2">
         <Card className="flex flex-col gap-3 p-4">
           <h2 className="flex items-center gap-2 text-xl"><Icon name="bell" />Post to #drops</h2>
@@ -71,7 +77,7 @@ export function ClubManage() {
                 </Select>
               </Field>
             )}
-            <Button type="submit" icon="arrowRight" busy={posting} busyLabel="Posting…" disabled={!text.trim()}>Post</Button>
+            <Button type="submit" icon="arrowRight" busy={posting} busyLabel="Posting…" disabled={d.isSandbox || !text.trim()}>Post</Button>
           </form>
           {d.announcements.length > 0 && (
             <ol className="flex flex-col gap-2 border-t-2 border-ink/15 pt-3" aria-label="Recent announcements">
@@ -98,7 +104,7 @@ export function ClubManage() {
                       <Button size="sm" variant="danger" onClick={() => void remove(m.buyerId)}>Confirm remove</Button>
                       <Button size="sm" variant="ghost" onClick={() => setRemoving(null)}>Cancel</Button>
                     </>
-                  ) : <Button size="sm" variant="ghost" icon="cross" onClick={() => setRemoving(m.buyerId)} aria-label={`Remove ${m.name}`}>Remove</Button>}
+                  ) : <Button size="sm" variant="ghost" icon="cross" disabled={d.isSandbox} onClick={() => setRemoving(m.buyerId)} aria-label={`Remove ${m.name}`}>Remove</Button>}
                 </li>
               ))}
             </ul>
@@ -122,7 +128,7 @@ export function ClubManage() {
                       <Button size="sm" type="submit" variant="danger" disabled={hiding.reason.trim().length < 3}>Hide</Button>
                       <Button size="sm" variant="ghost" onClick={() => setHiding(null)}>Cancel</Button>
                     </form>
-                  ) : <Button size="sm" variant="ghost" icon="eye" className="self-start" onClick={() => setHiding({ id: r.id, reason: "" })}>Hide review</Button>)}
+                  ) : <Button size="sm" variant="ghost" icon="eye" className="self-start" disabled={d.isSandbox} onClick={() => setHiding({ id: r.id, reason: "" })}>Hide review</Button>)}
                 </li>
               ))}
             </ul>

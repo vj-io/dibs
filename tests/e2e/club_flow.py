@@ -167,11 +167,13 @@ def flow(pw):
     expect(sp.get_by_test_id("club-members")).to_have_text("0 members")
     shot(sp, "10-seller-hidden-removed")
     bp.reload()
-    expect(bp.get_by_role("button", name="Join the club").first).to_be_visible()
+    expect(bp.get_by_role("button", name="Join the club")).to_have_count(0)  # removed members stay out
+    r = bctx.request.post(BASE + "/api/club/join", data=json.dumps({"shopSlug": slug}), headers={"Content-Type": "application/json"})
+    assert r.status in (400, 403), f"removed member rejoin: {r.status} {r.text()[:120]}"
     bp.get_by_role("tab", name="Reviews").click()
     expect(bp.get_by_text("No reviews yet")).to_be_visible()
     shot(bp, "11-buyer-after-moderation")
-    ok("hidden review gone for buyers; removed member sees Join again")
+    ok("hidden review gone for buyers; removed member cannot rejoin")
     browser.close()
 
 
