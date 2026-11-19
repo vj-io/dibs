@@ -3,7 +3,7 @@
 import "./env.ts";
 import { test, after, before } from "node:test";
 import assert from "node:assert/strict";
-import { cancelPending, roomTick, runLoop } from "../../src/lib/server/bots.ts";
+import { cancelPending, retryOnce, roomTick, runLoop, slotOf, type Row } from "../../src/lib/server/bots.ts";
 import { fn, sql } from "../../src/lib/server/db.ts";
 import { measureRtt, startTryRetry as startTry } from "./helpers.ts";
 import { onDropEvent } from "../../src/lib/server/sandbox-hooks.ts";
@@ -291,5 +291,25 @@ test("piece 2 fallback: 30 s after the confirm when the judge never comes back t
   } finally {
     await finish(s.dropId, s.ownerId);
     await loop;
+  }
+});
+
+test("a claimed action that throws is tried once more; next and chat are not repeated", async () => {
+  const s = await startTry("buyer", "Retry Tester");
+  try {
+    await cancelPending(s.dropId);
+    const slot = (await slotOf(s.dropId))!;
+    const row = (action: Row["action"], payload: Row["payload"] = { orderId: "00000000-0000-4000-8000-000000000000" }): Row => ({ id: "x", action, payload });
+    const queued = () => sql`select action, payload from bot_schedule where drop_id = ${s.dropId} and done_at is null`;
+    assert.equal(await retryOnce(slot, row("confirm")), true);
+    const [q] = await queued();
+    assert.equal(q.action, "confirm");
+    assert.equal(q.payload.retried, true);
+    assert.equal(await retryOnce(slot, row("confirm", { ...q.payload })), false, "a retried row is not queued again");
+    assert.equal(await retryOnce(slot, row("next", { ifPosition: 1 })), false);
+    assert.equal(await retryOnce(slot, row("chat", { text: "hi" })), false);
+    assert.equal((await queued()).length, 1);
+  } finally {
+    await finish(s.dropId, s.ownerId);
   }
 });

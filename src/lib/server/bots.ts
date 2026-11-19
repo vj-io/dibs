@@ -227,7 +227,7 @@ async function ensureRegistered(b: { buyerId: string; uid: string; name: string 
   registered.add(b.uid);
 }
 
-type Row = { id: string; action: Action; payload: Record<string, string | number | boolean | null> };
+export type Row = { id: string; action: Action; payload: Record<string, string | number | boolean | null> };
 
 async function botChat(slot: Slot, r: Row) {
   const p = r.payload as { buyerId: string; uid: string; name: string; text: string };
@@ -275,6 +275,21 @@ async function exec(slot: Slot, r: Row) {
   }
 }
 
+/**
+ * A claimed row is marked done before it runs, so a call that throws (a 20 s RPC timeout, a pooler hiccup) would be
+ * lost: a judge who tapped "I've paid" would never see the demo staff confirm. These engine calls answer a repeat with
+ * an error and change nothing (order_confirm on a paid order returns bad_state), so each gets one more try 2 s later.
+ * "next" and "chat" are not repeated: a second "next" could skip a piece.
+ */
+const RETRYABLE = new Set<Action>(["confirm", "paid_claim", "leave", "go_live", "end"]);
+export async function retryOnce(slot: Slot, r: Row): Promise<boolean> {
+  if (!RETRYABLE.has(r.action) || r.payload.retried) return false;
+  await sql`insert into bot_schedule (drop_id, due_at, action, payload)
+            values (${slot.dropId}, clock_timestamp() + interval '2 seconds', ${r.action}, ${sql.json({ ...r.payload, retried: true })})`
+    .catch((e) => console.error("[bots] requeue", r.action, e instanceof Error ? e.message : e));
+  return true;
+}
+
 export type DueResult = { executed: number; nextDueMs: number | null; status: string | null };
 
 /** Claims every due row of this drop (each runs once, whoever claims it) and runs them in parallel. */
@@ -286,7 +301,7 @@ export async function runDue(slot: Slot): Promise<DueResult> {
   const tapRows = due.filter((r) => r.action === "tap"); // already in due order
   const all = Promise.all([
     ...(tapRows.length ? [taps(slot, tapRows).catch(log("tap"))] : []),
-    ...due.filter((r) => r.action !== "tap").map((r) => exec(slot, r).catch(log(r.action))),
+    ...due.filter((r) => r.action !== "tap").map((r) => exec(slot, r).catch((e) => { log(r.action)(e); return retryOnce(slot, r); })),
   ]);
   // one slow or stuck call (a queued RPC, a pooler hiccup) must not freeze the script: wait at most 1 s, the rest
   // finishes in the background (each row is already claimed, so it still runs exactly once)
