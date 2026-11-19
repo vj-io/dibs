@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/client/api";
 import { getLive, type Live, type LiveMsg, type LiveStatus } from "@/lib/client/live";
-import { useIsPhone, useSlow, useTryTick, withTimeout } from "@/lib/client/hooks";
+import { hhmm, useIsPhone, useSlow, useTryTick, withTimeout } from "@/lib/client/hooks";
 import { StillConnecting } from "@/components/sale/StillConnecting";
 import { BOT_ID, rupees, type Card } from "@/lib/codec";
 import type { Desk, OrderView, PublicConfig } from "@/lib/types";
@@ -50,6 +50,9 @@ export function OrderRoom({ orderId, viewer: asked, embedded, arrived }: {
   const liveRef = useRef<Live | null>(null);
   const [meId, setMeId] = useState<string | null>(null);
   const loadTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // the one polite region speaks only about changes while the page is open: the state on arrival is on screen already
+  const [arrival, setArrival] = useState<string | null>(null);
+  const [warnedFor, setWarnedFor] = useState<string | null>(null); // the deadline whose 30 s mark has passed
 
   const load = useCallback(async () => {
     try {
@@ -83,6 +86,15 @@ export function OrderRoom({ orderId, viewer: asked, embedded, arrived }: {
     }, 10_000);
     return () => clearInterval(t);
   }, [orderId, vState, vExp, reload]);
+
+  // a hold's last 30 s are announced when the timer crosses them (not on arrival: a 1:30 hold starts under 2:00)
+  useEffect(() => {
+    if (vState !== "held" || !vExp) return;
+    const ms = Date.parse(vExp) - 30_000 - Date.now();
+    if (!(ms > 0)) return;
+    const t = setTimeout(() => setWarnedFor(vExp), ms);
+    return () => clearTimeout(t);
+  }, [vState, vExp]);
 
   // the order group: history (cards + chat), live messages, read receipts
   const groupId = view?.nexconnGroupId;
@@ -196,7 +208,12 @@ export function OrderRoom({ orderId, viewer: asked, embedded, arrived }: {
   const notReceived = v.state === "held" && v.history.at(-1)?.type === "payment_not_received";
   const notReceivedNote = notReceived ? v.history.at(-1)?.note : null;
   const confirmedBy = lastStatus && (lastStatus.state === "paid" || lastStatus.state === "shipped") ? lastStatus.by : null;
-  const payLine = v.payment.demo
+  const staff = viewer === "staff";
+  const payLine = staff
+    ? v.payment.demo || v.payment.upiId
+      ? `Buyer pays ${rupees(v.payment.amountPaise)} to your UPI ID; confirm when it reaches your bank.`
+      : "Your shop has no UPI ID yet, so the buyer has nothing to pay to. Add one under Shop."
+    : v.payment.demo
     ? `Demo shop: nothing to pay. In a real drop you would pay ${rupees(v.payment.amountPaise)} to the shop here.`
     : v.payment.upiId
     ? `Pay ${rupees(v.payment.amountPaise)} to ${v.payment.payee} (${v.payment.upiId}). Pay only here, never to a number in chat.`
@@ -206,166 +223,196 @@ export function OrderRoom({ orderId, viewer: asked, embedded, arrived }: {
   const sandbox = v.drop.isSandbox;
   const payBar = viewer === "buyer" && v.state === "held" && !embedded;
   const upiOnPhone = phone && !v.payment.demo && !!v.payment.upiId && !!v.payment.upiLink;
+  const warned = v.state === "held" && !!v.expiresAt && warnedFor === v.expiresAt;
+  const said = v.state === "held"
+    ? notReceived ? (staff ? "Marked not received. The buyer's timer restarted with 5 minutes." : "The shop hasn't received your payment yet. Your hold timer restarted with 5 minutes.")
+      : warned ? (staff ? "30 seconds left on this hold." : "30 seconds left to pay.") : ""
+    : v.state === "payment_claimed" ? (staff ? "Buyer says they paid. Check your bank app." : "Payment sent. Your timer is paused while the shop checks it.")
+    : v.state === "paid" ? `Paid · confirmed by ${confirmedBy ?? v.assignedTo?.displayName ?? "the shop"}.${sandbox && !staff ? " Going back to the room in 4 seconds unless you choose Stay here." : ""}`
+    : v.state === "shipped" ? "Shipped."
+    : ended ? `${ENDED[ended.type].word}. ${ENDED[ended.type].why(v, ended.note, staff)}` : "This hold has ended.";
+  const key = `${v.state}|${notReceived}|${warned}`;
+  if (arrival === null) setArrival(key);
+  else if (arrival !== "changed" && arrival !== key) setArrival("changed");
 
   return (
     <Chrome {...chrome}>
       {sandbox && <Banner />}
       {status === "offline" && <ConnectionBar status="offline" />}
-      <main id={embedded ? undefined : "main"} className={cx("mx-auto flex w-full max-w-xl flex-1 flex-col gap-4 pb-10", embedded ? "px-1" : "px-4 pt-4")}>
-        {sandbox && viewer === "buyer" && <OrderCoach v={v} roomHref={roomHref} />}
-        {viewer === "buyer" && otherPromo && otherPromo.orderId !== orderId && (
-          <div role="alert" className="pop-in flex flex-wrap items-center gap-2 rounded-wobble border-[2.5px] border-ink bg-lime px-3 py-2.5 shadow-ink-sm">
-            <Icon name="sparkle" size={22} />
-            <p className="min-w-0 flex-1 font-extrabold leading-tight">{otherPromo.text}</p>
-            <LinkButton href={`/o/${otherPromo.orderId}?from=promoted`} size="sm">Open that order</LinkButton>
-          </div>
-        )}
-        {viewer === "buyer" && arrived && v.state === "held" && (
-          <p role="status" className="pop-in flex items-center gap-2 rounded-wobble border-[2.5px] border-ink bg-lime px-3 py-2.5 text-xl font-extrabold leading-tight shadow-ink-sm">
-            <Icon name={arrived === "promoted" ? "sparkle" : "check"} size={24} stroke={2.8} />
-            {arrived === "promoted" ? "It's yours! The buyer ahead didn't pay." : "You got it!"}
-          </p>
-        )}
-        {sandbox && viewer === "buyer" && (v.state === "paid" || v.state === "shipped") && (
-          <BackToRoom href={roomHref} label={v.item.position === 1 ? "Back to the room for piece 2" : "Back to the room"} />
-        )}
-
-        {/* order card */}
-        <Box as="article" className="flex gap-3 p-3" aria-label={`Order #${v.orderNo}`}>
-          <div className="relative w-24 shrink-0 self-start">
-            {v.item.photos[0]
-              ? <img src={v.item.photos[0]} alt={v.item.title} className="aspect-[4/5] w-full rounded-wobble border-2 border-ink object-cover" />
-              : <span className="grid aspect-[4/5] w-full place-items-center rounded-wobble border-2 border-ink bg-grey"><Icon name="bag" /></span>}
-            {(v.state === "paid" || v.state === "shipped") && <Stamp word={v.state === "paid" ? "PAID" : "SHIPPED"} size="sm" className="absolute bottom-2 left-1" />}
-          </div>
-          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-            <p className="font-mono text-sm text-muted">Order #{v.orderNo} · {v.shop.name}</p>
-            <h1 className="text-xl leading-tight"><span className="font-mono text-muted">#{v.item.position}</span> {v.item.title}</h1>
-            <p className="flex flex-wrap items-center gap-2"><span className="rounded-pill border-2 border-ink px-2 text-sm font-semibold">{v.variant.label}</span><Price paise={v.amountPaise} /></p>
-            <div className="flex flex-wrap items-center gap-2">
-              {v.state === "cancelled"
-                ? <StatePill state={ended?.type === "hold_expired" ? "expired" : ended?.type === "hold_released" ? "released" : "cancelled"} size="sm" />
-                : <StatePill state={v.state} size="sm" />}
-              {v.state === "held" && v.expiresAt && <Countdown expiresAt={v.expiresAt} label="Pay within" size="sm" onDone={() => reload(800)} />}
-              {v.state === "payment_claimed" && (
-                <span className="inline-flex items-center gap-1 rounded-pill border-2 border-ink bg-grey px-2 py-1 text-sm font-semibold"><Icon name="pause" size={14} />Timer paused</span>
-              )}
-            </div>
-          </div>
-        </Box>
-
-        {/* why it ended / what happened */}
-        {v.state === "cancelled" && (
-          <Box tint="grey" flat className="flex items-start gap-2" role="status">
-            <Icon name="cross" size={22} className="mt-0.5" />
-            <div>
-              <p className="font-extrabold">{ended ? ENDED[ended.type].word : "Cancelled"}</p>
-              <p>{ended ? ENDED[ended.type].why(v, ended.note, viewer === "staff") : "This hold has ended."}</p>
-              {viewer === "buyer" && <Link href={roomHref} className="mt-1 inline-flex min-h-12 items-center font-semibold underline">Back to the sale room</Link>}
-            </div>
-          </Box>
-        )}
-        {notReceived && (
-          <Box tint="peach" flat className="flex items-start gap-2" role="alert">
-            <Icon name="warning" size={22} className="mt-0.5 text-peach-ink" />
-            <div>
-              {viewer === "staff" ? (<>
-                <p className="font-extrabold">Marked not received · buyer&apos;s timer restarted</p>
-                <p>{notReceivedNote ? `“${notReceivedNote}” · ` : ""}The buyer has 5 more minutes to pay and tap I&apos;ve paid again.</p>
-              </>) : (<>
-                <p className="font-extrabold">The shop hasn&apos;t received your payment yet</p>
-                <p>{notReceivedNote ? `“${notReceivedNote}” · ` : ""}Your hold timer restarted with 5 minutes. Check your UPI app, then tap I&apos;ve paid again.</p>
-              </>)}
-            </div>
-          </Box>
-        )}
-        {(v.state === "paid" || v.state === "shipped") && (
-          <Box tint="mint" flat className="flex items-start gap-2" role="status">
-            <Icon name={v.state === "paid" ? "check" : "truck"} size={24} className="mt-0.5 text-mint-ink" />
-            <div>
-              <p className="text-lg font-extrabold">{v.state === "paid" ? `Paid · confirmed by ${confirmedBy ?? v.assignedTo?.displayName ?? "the shop"}` : "Shipped"}</p>
-              {v.state === "shipped" && <p>{v.trackingNote ? `Tracking: ${v.trackingNote}` : "On its way to you."}</p>}
-              {v.state === "paid" && <p>It&apos;s yours. The shop will ship it and post updates here.</p>}
-            </div>
-          </Box>
-        )}
-
-        {/* payment card */}
-        {(v.state === "held" || v.state === "payment_claimed") && (
-          <Box tint="card" className="flex flex-col gap-3" aria-labelledby="pay-h">
-            <h2 id="pay-h" className="flex items-center gap-2 text-xl"><Icon name="rupee" size={22} />Payment</h2>
-            <p className="text-lg font-semibold leading-snug">{payLine}</p>
-            {sandbox && <p className="flex items-center gap-2 rounded-wobble border-2 border-violet-ink bg-violet px-3 py-1.5 font-semibold text-violet-ink"><Icon name="robot" size={18} />Demo: tap I&apos;ve paid</p>}
-            {v.payment.demo && v.state === "held" && viewer === "buyer" && (
-              <div className="flex flex-wrap items-center gap-4">
-                {phone ? (
-                  <button type="button" disabled className="inline-flex min-h-14 cursor-not-allowed items-center justify-center gap-2 rounded-wobble-2 border-[2.5px] border-ink bg-paper px-5 text-xl font-extrabold opacity-60">
-                    <Icon name="rupee" size={22} />Pay with UPI (demo)
-                  </button>
-                ) : <QR value={v.payment.upiLink ?? "Dibs demo: no real payment"} size={168} label="Demo QR code: no real payment" />}
-                <p className="max-w-[16rem] font-hand text-lg leading-snug">Demo: this is not a real UPI link and nothing can be paid. Tap I&apos;ve paid below.</p>
+      <main id={embedded ? undefined : "main"} className={cx("mx-auto flex w-full max-w-xl flex-1 flex-col gap-4 pb-10", embedded ? "px-1" : "px-4 pt-4 lg:max-w-5xl")}>
+        <p role="status" className="sr-only" data-testid="order-said">{arrival === "changed" ? said : ""}</p>
+        {/* two columns from lg (order + payment | status + chat); one column on phones and inside the staff sheet */}
+        <div className={cx("flex flex-col gap-4", !embedded && "lg:grid lg:grid-cols-2 lg:items-start lg:gap-6")}>
+          <div className="flex min-w-0 flex-col gap-4">
+            {sandbox && viewer === "buyer" && <OrderCoach v={v} roomHref={roomHref} />}
+            {viewer === "buyer" && otherPromo && otherPromo.orderId !== orderId && (
+              // the toast already announces it
+              <div className="pop-in flex flex-wrap items-center gap-2 rounded-wobble border-[2.5px] border-ink bg-lime px-3 py-2.5 shadow-ink-sm">
+                <Icon name="sparkle" size={22} />
+                <p className="min-w-0 flex-1 font-extrabold leading-tight">{otherPromo.text}</p>
+                <LinkButton href={`/o/${otherPromo.orderId}?from=promoted`} size="sm">Open that order</LinkButton>
               </div>
             )}
-            {!v.payment.demo && v.payment.upiId && v.payment.upiLink && v.state === "held" && viewer === "buyer" && (
-              phone ? null : (
-                <div className="flex flex-wrap items-center gap-4">
-                  <QR value={v.payment.upiLink} size={168} label={`UPI QR code: pay ${rupees(v.payment.amountPaise)} to ${v.payment.payee}`} />
-                  <p className="max-w-[14rem] font-hand text-lg leading-snug">Scan with any UPI app on your phone, or copy the UPI ID below.</p>
-                </div>
-              )
-            )}
-            {v.payment.upiId && !v.payment.demo && (
-              <button type="button" onClick={() => { void navigator.clipboard?.writeText(v.payment.upiId!).then(() => toast("UPI ID copied", { tone: "good" }), () => {}); }}
-                className="flex min-h-12 items-center gap-2 self-start rounded-wobble border-2 border-ink bg-paper px-3 font-mono font-semibold">
-                <Icon name="copy" size={18} />{v.payment.upiId}<span className="sr-only">Copy UPI ID</span>
-              </button>
-            )}
-            {viewer === "buyer" && v.state === "held" && (
-              <form id="paid-form" className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); void paid(); }} noValidate>
-                <Field label="UTR number (optional)" hint="The 12-digit reference in your UPI app" error={utrErr}>
-                  <Input value={utr} onChange={(e) => setUtr(e.target.value)} inputMode="numeric" autoComplete="off" maxLength={26} placeholder="12 digits" />
-                </Field>
-              </form>
-            )}
-            {v.state === "payment_claimed" && (
-              <p role="status" className="flex items-center gap-2 rounded-wobble border-2 border-ink bg-sky px-3 py-2 font-semibold">
-                <Icon name="clock" size={20} className="text-sky-ink" />
-                {viewer === "buyer" ? "Payment sent. Your timer is paused while the shop checks it." : "Buyer says they paid. Check your bank app."}
-                {v.utr ? ` UTR ${v.utr}` : ""}
+            {viewer === "buyer" && arrived && v.state === "held" && (
+              <p className="pop-in flex items-center gap-2 rounded-wobble border-[2.5px] border-ink bg-lime px-3 py-2.5 text-xl font-extrabold leading-tight shadow-ink-sm">
+                <Icon name={arrived === "promoted" ? "sparkle" : "check"} size={24} stroke={2.8} />
+                {arrived === "promoted" ? "It's yours! The buyer ahead didn't pay." : "You got it!"}
               </p>
             )}
-          </Box>
-        )}
+            {sandbox && viewer === "buyer" && (v.state === "paid" || v.state === "shipped") && (
+              <BackToRoom href={roomHref} label={v.item.position === 1 ? "Back to the room for piece 2" : "Back to the room"} />
+            )}
 
-        {viewer === "staff" && (
-          <StaffBar v={v} busy={busy} onAction={setAction} />
-        )}
+            {/* order card */}
+            <Box as="article" className="flex gap-3 p-3" aria-label={`Order #${v.orderNo}`}>
+              <div className="relative w-24 shrink-0 self-start">
+                {v.item.photos[0]
+                  ? <img src={v.item.photos[0]} alt={v.item.title} className="aspect-[4/5] w-full rounded-wobble border-2 border-ink object-cover" />
+                  : <span className="grid aspect-[4/5] w-full place-items-center rounded-wobble border-2 border-ink bg-grey"><Icon name="bag" /></span>}
+                {(v.state === "paid" || v.state === "shipped") && <Stamp word={v.state === "paid" ? "PAID" : "SHIPPED"} size="sm" className="absolute bottom-2 left-1" />}
+              </div>
+              <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                <p className="font-mono text-sm text-muted">Order #{v.orderNo} · {v.shop.name}</p>
+                <h1 className="text-xl leading-tight"><span className="font-mono text-muted">#{v.item.position}</span> {v.item.title}</h1>
+                <p className="flex flex-wrap items-center gap-2"><span className="rounded-pill border-2 border-ink px-2 text-sm font-semibold">{v.variant.label}</span><Price paise={v.amountPaise} /></p>
+                <div className="flex flex-wrap items-center gap-2">
+                  {v.state === "cancelled"
+                    ? <StatePill state={ended?.type === "hold_expired" ? "expired" : ended?.type === "hold_released" ? "released" : "cancelled"} size="sm" />
+                    : <StatePill state={v.state} size="sm" />}
+                  {v.state === "held" && v.expiresAt && (<>
+                    {/* the ticking timer is for eyes; screen readers get the deadline here and the 30 s mark from the status line */}
+                    <span aria-hidden="true" className="flex"><Countdown expiresAt={v.expiresAt} label="Pay within" size="sm" onDone={() => reload(800)} /></span>
+                    <span className="sr-only">{staff ? "Hold ends at" : "Pay by"} {hhmm(Date.parse(v.expiresAt))}</span>
+                  </>)}
+                  {v.state === "payment_claimed" && (
+                    <span className="inline-flex items-center gap-1 rounded-pill border-2 border-ink bg-grey px-2 py-1 text-sm font-semibold"><Icon name="pause" size={14} />Timer paused</span>
+                  )}
+                </div>
+              </div>
+            </Box>
 
-        <Box flat className="flex flex-col gap-2" aria-labelledby="tl-h">
-          <h2 id="tl-h" className="font-hand text-2xl font-normal tracking-normal">Status</h2>
-          <Timeline state={v.state} failed={notReceived} failedLabel={notReceived ? "Payment not received · timer restarted" : ended ? ENDED[ended.type].word : undefined} />
-        </Box>
+            {/* why it ended / what happened */}
+            {v.state === "cancelled" && (
+              <Box tint="grey" flat className="flex items-start gap-2">
+                <Icon name="cross" size={22} className="mt-0.5" />
+                <div>
+                  <p className="font-extrabold">{ended ? ENDED[ended.type].word : "Cancelled"}</p>
+                  <p>{ended ? ENDED[ended.type].why(v, ended.note, viewer === "staff") : "This hold has ended."}</p>
+                  {viewer === "buyer" && <Link href={roomHref} className="mt-1 inline-flex min-h-12 items-center font-semibold underline">Back to the sale room</Link>}
+                </div>
+              </Box>
+            )}
+            {notReceived && (
+              <Box tint="peach" flat className="flex items-start gap-2">
+                <Icon name="warning" size={22} className="mt-0.5 text-peach-ink" />
+                <div>
+                  {viewer === "staff" ? (<>
+                    <p className="font-extrabold">Marked not received · buyer&apos;s timer restarted</p>
+                    <p>{notReceivedNote ? `“${notReceivedNote}” · ` : ""}The buyer has 5 more minutes to pay and tap I&apos;ve paid again.</p>
+                  </>) : (<>
+                    <p className="font-extrabold">The shop hasn&apos;t received your payment yet</p>
+                    <p>{notReceivedNote ? `“${notReceivedNote}” · ` : ""}Your hold timer restarted with 5 minutes. Check your UPI app, then tap I&apos;ve paid again.</p>
+                  </>)}
+                </div>
+              </Box>
+            )}
+            {(v.state === "paid" || v.state === "shipped") && (
+              <Box tint="mint" flat className="flex items-start gap-2">
+                <Icon name={v.state === "paid" ? "check" : "truck"} size={24} className="mt-0.5 text-mint-ink" />
+                <div>
+                  <p className="text-lg font-extrabold">{v.state === "paid" ? `Paid · confirmed by ${confirmedBy ?? v.assignedTo?.displayName ?? "the shop"}` : "Shipped"}</p>
+                  {v.state === "shipped" && <p>{v.trackingNote ? `Tracking: ${v.trackingNote}` : "On its way to you."}</p>}
+                  {v.state === "paid" && <p>It&apos;s yours. The shop will ship it and post updates here.</p>}
+                </div>
+              </Box>
+            )}
 
-        <Chat title={viewer === "buyer" ? `Chat with ${v.shop.name}` : `Chat with ${v.buyer.displayName}`} lines={lines}
-          meId={meId} onSend={sendChat} receipts={receipts}
-          disabledReason={v.state === "cancelled" ? "This order has ended." : null}
-          empty={viewer === "buyer" ? "Questions about the piece? Ask the team here." : "No messages yet."} maxHeight="max-h-96" />
+            {/* payment card */}
+            {(v.state === "held" || v.state === "payment_claimed") && (
+              <Box tint="card" className="flex flex-col gap-3" aria-labelledby="pay-h">
+                <h2 id="pay-h" className="flex items-center gap-2 text-xl"><Icon name="rupee" size={22} />Payment</h2>
+                <p className="text-lg font-semibold leading-snug">{payLine}</p>
+                {sandbox && (
+                  <p className="flex items-center gap-2 rounded-wobble border-2 border-violet-ink bg-violet px-3 py-1.5 font-semibold text-violet-ink">
+                    <Icon name="robot" size={18} className="shrink-0" />
+                    {!staff ? "Demo: tap I've paid" : v.utr?.startsWith("DEMO-UTR-") ? "Demo payment from a 🤖 buyer: not real money" : "Demo shop: no real money moves"}
+                  </p>
+                )}
+                {v.payment.demo && v.state === "held" && viewer === "buyer" && (
+                  <div className="flex flex-wrap items-center gap-4">
+                    {phone ? (
+                      <button type="button" disabled className="inline-flex min-h-14 cursor-not-allowed items-center justify-center gap-2 rounded-wobble-2 border-[2.5px] border-ink bg-paper px-5 text-xl font-extrabold opacity-60">
+                        <Icon name="rupee" size={22} />Pay with UPI (demo)
+                      </button>
+                    ) : <QR value={v.payment.upiLink ?? "Dibs demo: no real payment"} size={168} label="Demo QR code: no real payment" />}
+                    <p className="max-w-[16rem] font-hand text-lg leading-snug">Demo: this is not a real UPI link and nothing can be paid. Tap I&apos;ve paid below.</p>
+                  </div>
+                )}
+                {!v.payment.demo && v.payment.upiId && v.payment.upiLink && v.state === "held" && viewer === "buyer" && (
+                  phone ? null : (
+                    <div className="flex flex-wrap items-center gap-4">
+                      <QR value={v.payment.upiLink} size={168} label={`UPI QR code: pay ${rupees(v.payment.amountPaise)} to ${v.payment.payee}`} />
+                      <p className="max-w-[14rem] font-hand text-lg leading-snug">Scan with any UPI app on your phone, or copy the UPI ID below.</p>
+                    </div>
+                  )
+                )}
+                {v.payment.upiId && !v.payment.demo && (
+                  <button type="button" onClick={() => { void navigator.clipboard?.writeText(v.payment.upiId!).then(() => toast("UPI ID copied", { tone: "good" }), () => {}); }}
+                    className="flex min-h-12 items-center gap-2 self-start rounded-wobble border-2 border-ink bg-paper px-3 font-mono font-semibold">
+                    <Icon name="copy" size={18} />{v.payment.upiId}<span className="sr-only">Copy UPI ID</span>
+                  </button>
+                )}
+                {viewer === "buyer" && v.state === "held" && (
+                  <form id="paid-form" className="flex flex-col gap-3" onSubmit={(e) => { e.preventDefault(); void paid(); }} noValidate>
+                    <Field label="UTR number (optional)" hint="The 12-digit reference in your UPI app" error={utrErr}>
+                      <Input value={utr} onChange={(e) => setUtr(e.target.value)} inputMode="numeric" autoComplete="off" maxLength={26} placeholder="12 digits" />
+                    </Field>
+                  </form>
+                )}
+                {v.state === "payment_claimed" && (
+                  <p className="flex items-center gap-2 rounded-wobble border-2 border-ink bg-sky px-3 py-2 font-semibold">
+                    <Icon name="clock" size={20} className="text-sky-ink" />
+                    {viewer === "buyer" ? "Payment sent. Your timer is paused while the shop checks it." : "Buyer says they paid. Check your bank app."}
+                    {v.utr ? ` UTR ${v.utr}` : ""}
+                  </p>
+                )}
+              </Box>
+            )}
 
-        {viewer === "buyer" && (v.state === "held" || v.state === "payment_claimed") && (
-          cfg?.features.calls ? (
-            <Button variant="ghost" icon="video" disabledReason="Video calls are coming soon">See it on video</Button>
-          ) : wa ? (
-            <a href={`https://wa.me/91${wa}?text=${encodeURIComponent(`Hi! Can I see #${v.item.position} ${v.item.title} (order #${v.orderNo}) on video?`)}`}
-              target="_blank" rel="noopener noreferrer"
-              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-wobble-2 border-[2.5px] border-ink bg-card px-5 text-lg font-extrabold shadow-ink-sm no-underline">
-              <Icon name="video" size={20} />See it on video · WhatsApp +91 {wa}
-            </a>
-          ) : null
-        )}
+            {viewer === "staff" && (
+              <StaffBar v={v} busy={busy} onAction={setAction} />
+            )}
+          </div>
 
-        {viewer === "buyer" && v.state === "held" && (
-          <Button variant="ghost" onClick={() => setConfirmRelease(true)}>Release hold</Button>
-        )}
+          <div className="flex min-w-0 flex-col gap-4">
+            <Box flat className="flex flex-col gap-2" aria-labelledby="tl-h">
+              <h2 id="tl-h" className="font-hand text-2xl font-normal tracking-normal">Status</h2>
+              <Timeline state={v.state} failed={notReceived} failedLabel={notReceived ? "Payment not received · timer restarted" : ended ? ENDED[ended.type].word : undefined} />
+            </Box>
+
+            <Chat title={viewer === "buyer" ? `Chat with ${v.shop.name}` : `Chat with ${v.buyer.displayName}`} lines={lines}
+              sub={cfg ? (cfg.mode === "nexconn" ? "Private Nexconn group channel" : "Private group channel (local mock)") : null}
+              meId={meId} onSend={sendChat} receipts={receipts}
+              disabledReason={v.state === "cancelled" ? "This order has ended." : null}
+              empty={viewer === "buyer" ? "Questions about the piece? Ask the team here." : "No messages yet."} maxHeight="max-h-96" />
+
+            {viewer === "buyer" && (v.state === "held" || v.state === "payment_claimed") && (
+              cfg?.features.calls ? (
+                <Button variant="ghost" icon="video" disabledReason="Video calls are coming soon">See it on video</Button>
+              ) : wa ? (
+                <a href={`https://wa.me/91${wa}?text=${encodeURIComponent(`Hi! Can I see #${v.item.position} ${v.item.title} (order #${v.orderNo}) on video?`)}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-wobble-2 border-[2.5px] border-ink bg-card px-5 text-lg font-extrabold shadow-ink-sm no-underline">
+                  <Icon name="video" size={20} />See it on video · WhatsApp +91 {wa}
+                </a>
+              ) : null
+            )}
+
+            {viewer === "buyer" && v.state === "held" && (
+              <Button variant="ghost" onClick={() => setConfirmRelease(true)}>Release hold</Button>
+            )}
+          </div>
+        </div>
         {viewer === "buyer" && !embedded && <Link href={roomHref} className="inline-flex min-h-12 items-center gap-1 self-center font-semibold underline"><Icon name="chevronLeft" size={18} />Back to the sale room</Link>}
         {payBar && <div aria-hidden="true" className={cx("shrink-0", upiOnPhone ? "h-40" : "h-24")} />}
       </main>
@@ -373,14 +420,14 @@ export function OrderRoom({ orderId, viewer: asked, embedded, arrived }: {
       {payBar && (
         // I've paid is always on screen while the hold waits (the UTR field above is optional)
         <div className="fixed inset-x-0 bottom-0 z-20 border-t-[2.5px] border-ink bg-paper/95 px-4 pt-2 pb-[max(0.6rem,env(safe-area-inset-bottom))] backdrop-blur-sm" data-testid="pay-bar">
-          <div className="mx-auto flex w-full max-w-xl flex-col gap-2">
+          <div className="mx-auto w-full max-w-xl lg:max-w-5xl"><div className="flex flex-col gap-2 lg:w-1/2 lg:pr-3">
             {upiOnPhone && (
               <a href={v.payment.upiLink!} className="relative inline-flex min-h-14 items-center justify-center gap-2 rounded-wobble-2 border-[2.5px] border-ink bg-card px-5 text-xl font-extrabold shadow-ink-sm no-underline active:translate-x-[3px] active:translate-y-[3px] active:shadow-none">
                 <Icon name="rupee" size={22} />Pay {rupees(v.payment.amountPaise)} with UPI
               </a>
             )}
             <Button type="submit" form="paid-form" size="lg" icon="check" busy={busy === "paid"} busyLabel="Sending…" className="w-full">I&apos;ve paid</Button>
-          </div>
+          </div></div>
         </div>
       )}
 
@@ -431,7 +478,7 @@ function BackToRoom({ href, label }: { href: string; label: string }) {
   return (
     <div ref={box} className="flex flex-col gap-1">
       <LinkButton href={href} size="lg" icon="arrowRight">{label}</LinkButton>
-      <p className="flex items-center justify-between gap-2 px-1 font-hand text-lg" aria-live="polite">
+      <p className="flex items-center justify-between gap-2 px-1 font-hand text-lg">
         {stay ? <span>Take your time.</span> : <span>Going back in <span className="font-mono">{Math.max(0, left)}</span> s…</span>}
         {!stay && <button type="button" onClick={() => setStay(true)} className="min-h-12 px-2 font-sans text-base font-semibold underline">Stay here</button>}
       </p>
@@ -445,7 +492,7 @@ function OrderCoach({ v, roomHref }: { v: OrderView; roomHref: string }) {
     : v.state === "paid" || v.state === "shipped" ? "Paid and confirmed by demo staff. Next: back to the room."
     : <>This hold ended. <Link href={roomHref} className="font-semibold underline">Back to the room</Link></>;
   return (
-    <p role="status" aria-live="polite" className="flex items-center gap-2 rounded-wobble border-2 border-dashed border-violet-ink bg-violet px-3 py-2 font-hand text-lg leading-tight">
+    <p className="flex items-center gap-2 rounded-wobble border-2 border-dashed border-violet-ink bg-violet px-3 py-2 font-hand text-lg leading-tight">
       <Icon name="sparkle" size={20} className="shrink-0 text-violet-ink" />
       <span><span className="sr-only">Demo guide: </span>{line}</span>
     </p>

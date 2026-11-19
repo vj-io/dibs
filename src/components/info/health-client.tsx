@@ -91,9 +91,10 @@ export function HealthClient() {
     <>
       <AppHeader title="Health" right={<LinkButton href="/seller" variant="ghost" size="sm">Seller</LinkButton>} />
       <main id="main" className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
-        {auth === "checking" && <Skeleton className="h-40" />}
+        {auth !== "in" && <h1 className="text-3xl">Health</h1>}
+        {auth === "checking" && <Skeleton className="mt-4 h-40" />}
         {auth === "out" && (
-          <EmptyState icon="lock" title="Staff only" body="Sign in as a seller or staff member to see how Dibs is running."
+          <EmptyState className="mt-4" icon="lock" title="Staff only" body="Sign in as a seller or staff member to see how Dibs is running."
             action={<LinkButton href="/seller" variant="primary" size="md">Sign in at /seller</LinkButton>} />
         )}
         {auth === "in" && (

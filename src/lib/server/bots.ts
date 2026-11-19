@@ -13,12 +13,16 @@ export type Action = "tap" | "chat" | "leave" | "paid_claim" | "confirm" | "next
 export type Planned = { ms: number; action: Action; payload: Record<string, unknown> };
 export type Slot = { slot: number; dropId: string; role: "buyer" | "seller"; judgeId: string; shopId: string; channelId: string; ownerId: string; staffId: string };
 type Bot = { id: string; uid: string; name: string };
-type Item = { id: string; position: number; variants: { key: string; qty: number }[]; has_more: boolean };
+type Item = { id: string; position: number; variants: { key: string; qty: number }[] };
 
-/** The buyer script's clock (ms after /try/start unless noted). In a demo drop bot holds last 12 s, a human's 90 s (0009). */
+/**
+ * The buyer script's clock (ms after /try/start unless noted). In a demo drop bot holds last 12 s, a human's 90 s (0009).
+ * Piece 2 is the buyer demo's last piece: it ends lastEndMs after piece 2 drops (the bots have sold it out by 13 s),
+ * or winEndMs after the judge's room tick sees them holding it, whichever comes first; endMs is the backstop.
+ */
 export const SCRIPT = {
-  holdMs: 12_000, firstLiveMs: 5000, firstLiveFallbackMs: 12_000, fallbackNextMs: 85_000, endMs: 180_000, pieceGapMs: 25_000,
-  confirmMs: 3000, roomNextMs: 3000, confirmFallbackMs: 33_000, scamMs: 30_000, chatEveryMs: 3000, promoteWithinMs: 30_000,
+  holdMs: 12_000, firstLiveMs: 5000, firstLiveFallbackMs: 12_000, fallbackNextMs: 85_000, endMs: 180_000, lastEndMs: 16_000,
+  winEndMs: 4000, confirmMs: 3000, roomNextMs: 3000, confirmFallbackMs: 33_000, scamMs: 30_000, chatEveryMs: 3000, promoteWithinMs: 30_000,
 } as const;
 
 const LINES = [
@@ -52,9 +56,7 @@ export function planTaps(role: Slot["role"], position: number, variants: Item["v
     // short for a person: back from the order room, the page loads and the card is read before the tap (an iPhone
     // Safari run on 20 Nov 2026 missed it; scripted browsers tap within 1 s and never noticed)
     for (const v of variants) { add(v.key, Math.min(1, v.qty - 1), 1500, 3000); add(v.key, v.qty, 10_000, 13_000); }
-  } else {
-    for (const v of variants) add(v.key, v.qty + 1, 300, 5000);
-  }
+  } // the buyer demo ends after piece 2: no later piece drops
   return t.sort((a, b) => a.ms - b.ms);
 }
 
@@ -95,11 +97,12 @@ const scamChat = (bots: Bot[], ms: number): Planned => {
   return { ms, action: "chat", payload: { buyerId: b.id, uid: b.uid, name: b.name, text: SCAM_LINE, scam: true } };
 };
 
-function itemPlan(slot: Slot, it: Item, bots: Bot[]): Planned[] {
+/** A piece's bot taps (ms after it goes live); in the buyer script piece 2 also carries the demo's end. */
+export function itemPlan(slot: Pick<Slot, "role">, it: Item, bots: Bot[]): Planned[] {
   const who = shuffle(bots);
   const rows: Planned[] = planTaps(slot.role, it.position, it.variants)
     .map((t, i) => ({ ms: t.ms, action: "tap", payload: { buyerId: who[i % who.length].id, itemId: it.id, variant: t.variant } }));
-  if (slot.role === "buyer" && it.position >= 2 && it.has_more) rows.push({ ms: SCRIPT.pieceGapMs, action: "next", payload: { ifPosition: it.position } });
+  if (slot.role === "buyer" && it.position === 2) rows.push({ ms: SCRIPT.lastEndMs, action: "end", payload: {} });
   return rows;
 }
 
@@ -138,8 +141,7 @@ async function schedule(dropId: string, rows: Planned[], base: Date | null = nul
 const itemCols = () => sql`
   i.id, i.position,
   (select jsonb_agg(jsonb_build_object('key', pv.key, 'qty', s.total) order by pv.sort, pv.key)
-     from item_stock s join product_variants pv on pv.id = s.variant_id where s.drop_item_id = i.id) as variants,
-  exists (select 1 from drop_items j where j.drop_id = i.drop_id and j.position > i.position) as has_more`;
+     from item_stock s join product_variants pv on pv.id = s.variant_id where s.drop_item_id = i.id) as variants`;
 
 // ------------------------------------------------------------------ script entry points
 
@@ -182,15 +184,20 @@ export async function onItemLive(slot: Slot, itemId: string) {
  */
 export async function onPaidClaim(slot: Slot, orderId: string) {
   if (slot.role !== "buyer") return;
-  const [o] = await sql`select buyer_id from orders where id = ${orderId} and drop_id = ${slot.dropId}`;
+  const [o] = await sql`select o.buyer_id, i.position from orders o join claims c on c.id = o.claim_id join drop_items i on i.id = c.drop_item_id
+                         where o.id = ${orderId} and o.drop_id = ${slot.dropId}`;
   if (o?.buyer_id !== slot.judgeId) return;
+  // paying for piece 2 is optional and may come after the demo ended: it is still confirmed, and nothing else follows
   await schedule(slot.dropId, [
     { ms: SCRIPT.confirmMs, action: "confirm", payload: { orderId } },
-    { ms: SCRIPT.confirmFallbackMs, action: "next", payload: { ifPosition: 1 } },
+    ...(o.position === 1 ? [{ ms: SCRIPT.confirmFallbackMs, action: "next" as const, payload: { ifPosition: 1 } }] : []),
   ]);
 }
 
-/** The judge's screen says it is on the sale room: after the confirm, piece 2 goes live 3 s later (once). */
+/**
+ * The judge's screen says it is on the sale room: after the confirm, piece 2 goes live 3 s later (once); once the judge
+ * holds piece 2 (won, or promoted), the demo ends 4 s later (once), so the win is the last thing that happens.
+ */
 export async function roomTick(dropId: string) {
   const slot = await slotOf(dropId);
   if (!slot || slot.role !== "buyer") return;
@@ -198,10 +205,15 @@ export async function roomTick(dropId: string) {
   await sql`select sandbox_first_room(${dropId}, ${SCRIPT.firstLiveMs})`;
   await sql`
     insert into bot_schedule (drop_id, due_at, action, payload)
-    select ${dropId}, clock_timestamp() + make_interval(secs => ${SCRIPT.roomNextMs / 1000}), 'next', ${sql.json({ ifPosition: 1, afterRoom: true })}
+    select ${dropId}::uuid, clock_timestamp() + make_interval(secs => ${SCRIPT.roomNextMs / 1000}), 'next', ${sql.json({ ifPosition: 1, afterRoom: true })}
      where exists (select 1 from bot_schedule where drop_id = ${dropId} and action = 'confirm' and done_at is not null)
        and not exists (select 1 from bot_schedule where drop_id = ${dropId} and action = 'next' and payload ? 'afterRoom')
-       and (select coalesce(max(position), 0) from drop_items where drop_id = ${dropId} and state <> 'queued') = 1`;
+       and (select coalesce(max(position), 0) from drop_items where drop_id = ${dropId} and state <> 'queued') = 1
+    union all
+    select ${dropId}::uuid, clock_timestamp() + make_interval(secs => ${SCRIPT.winEndMs / 1000}), 'end', ${sql.json({ afterWin: true })}
+     where exists (select 1 from claims c join drop_items i on i.id = c.drop_item_id
+                    where c.drop_id = ${dropId} and c.buyer_id = ${slot.judgeId} and i.position >= 2 and c.state in ('held', 'payment_claimed', 'paid'))
+       and not exists (select 1 from bot_schedule where drop_id = ${dropId} and action = 'end' and payload ? 'afterWin')`;
 }
 
 export async function cancelPending(dropId: string) {
@@ -273,7 +285,11 @@ async function exec(slot: Slot, r: Row) {
     case "confirm": await fn("order_confirm", String(p.orderId), slot.staffId, true, "Confirmed by Asha (demo staff)"); return;
     case "next": return next(slot, typeof p.ifPosition === "number" ? p.ifPosition : null);
     case "go_live": await fn("drop_go_live", slot.dropId, slot.ownerId); return;
-    case "end": await fn("drop_end", slot.dropId, slot.ownerId); await cancelPending(slot.dropId); return;
+    case "end":
+      await fn("drop_end", slot.dropId, slot.ownerId);
+      // a payment the judge already sent still gets its demo confirm
+      await sql`update bot_schedule set done_at = clock_timestamp() where drop_id = ${slot.dropId} and done_at is null and action <> 'confirm'`;
+      return;
   }
 }
 

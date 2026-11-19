@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { AppHeader, Button, cx, Field, Icon, Input, LinkButton, Sheet } from "@/components/ui";
+import { ForSellers } from "@/components/info/ForSellers";
 import { api, ApiError } from "@/lib/client/api";
 import { supabaseBrowser } from "@/lib/client/supabase-browser";
 import type { SellerMe } from "@/lib/types";
@@ -138,6 +139,7 @@ export function SignIn({ pendingEmail, invite }: { pendingEmail: string | null; 
           </>
         )}
       </Sheet>
+      <ForSellers />
       <p className="text-center text-muted">Just looking? <Link href={DEMO} className="font-semibold text-ink underline decoration-2">Try the seller demo instead</Link>. No sign-up.</p>
     </Frame>
   );

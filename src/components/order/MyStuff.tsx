@@ -133,7 +133,7 @@ function OrderRow({ o }: { o: MeOrder }) {
           <span className="truncate font-semibold">{o.title} · {o.variantLabel}</span>
           <span className="flex flex-wrap items-center gap-2 text-sm">
             <StatePill state={o.state} size="sm" />
-            {o.state === "held" && o.expiresAt && <Countdown expiresAt={o.expiresAt} size="sm" />}
+            {o.state === "held" && o.expiresAt && <Countdown expiresAt={o.expiresAt} size="sm" announce={false} />}
           </span>
           <span className="text-sm text-muted">{o.shop.name} · Order #{o.orderNo} · <Price paise={o.amountPaise} size="sm" className="text-sm" /></span>
         </span>

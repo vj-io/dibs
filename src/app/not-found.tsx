@@ -1,4 +1,7 @@
+import type { Metadata } from "next";
 import { AppHeader, Footer, LinkButton, Scribble } from "@/components/ui";
+
+export const metadata: Metadata = { title: "Page not found" };
 
 export default function NotFound() {
   return (

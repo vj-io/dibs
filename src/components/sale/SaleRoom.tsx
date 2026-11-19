@@ -10,7 +10,7 @@ import { api, ApiError } from "@/lib/client/api";
 import { getLive, type Live, type LiveMsg, type LiveStatus } from "@/lib/client/live";
 import { applyCard, forOtherDrop, mergeState, tickerKey } from "@/lib/client/sale";
 import { useNow, useOnline, useSlow, useTryTick, withTimeout } from "@/lib/client/hooks";
-import { coachLine } from "@/lib/client/coach";
+import { coachLine, demoFacts } from "@/lib/client/coach";
 import { reportTap } from "@/lib/client/tap-metric";
 import { BLOCKED_TEXT, hideOnArrival, scamRules } from "@/lib/ai/scam-shield";
 import { displayName, tapTime, type Card } from "@/lib/codec";
@@ -33,7 +33,10 @@ const Chat = dynamic(() => import("@/components/chat/Chat").then((m) => m.Chat),
 type Prompt = Extract<Card, { t: "DB:Prompt" }>;
 type Result = (ClaimResult | { result: "error"; message: string; position: null; orderId: null; expiresAt: null; ms: null; claimId: null })
   & { itemId: string; variantKey: string; tapAt: number; at: number };
-type Me = MyStatus & { startedAt: number; muted: boolean };
+// my_status (0016) also carries my own times: when I tapped, when the waitlist made it mine, and when the line moves next
+type Hold = MyStatus["holds"][number] & { ms?: number | null; promotedMs?: number | null; waitedAt?: number | null };
+type Wait = MyStatus["waits"][number] & { nextEndsAt?: string | null };
+type Me = Omit<MyStatus, "holds" | "waits"> & { holds: Hold[]; waits: Wait[]; startedAt: number; muted: boolean };
 
 declare global {
   interface Window { __dibs?: { lastTapMs: number | null; lastResult: string | null; taps: { ms: number; result: string; serverMs: number | null }[]; cards: string[] } }
@@ -85,10 +88,12 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
   const hiddenRef = useRef(new Set<string>());
   const waitsRef = useRef<Set<string>>(new Set());
   const previewRef = useRef(!!preview);
+  const demoOverRef = useRef(false);
   useEffect(() => {
     joinedRef.current = joined; verRef.current = state?.version ?? 0;
     floorRef.current = state?.isSandbox ? Date.parse(state.startsAt) - 2000 : 0;
-  }, [joined, state?.version, state?.isSandbox, state?.startsAt]);
+    demoOverRef.current = !!state?.isSandbox && state.status === "ended";
+  }, [joined, state?.version, state?.isSandbox, state?.startsAt, state?.status]);
 
   // ------------------------------------------------------------ data
   const loadMe = useCallback(async () => {
@@ -180,6 +185,8 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
       refreshMe(0);
       if (c.kind === "promoted") { setPromo({ orderId: c.orderId, text: c.text, at: performance.now() }); setAnnounce(c.text); if (c.orderId) setAutoOpen((o) => o?.orderId === c.orderId ? o : { orderId: c.orderId!, ms: 1600, from: "promoted" }); }
       else if (c.kind === "blocked") { setChatNote(c.text); toast(c.text, { tone: "warn", ms: 7000 }); }
+      // the demo is over: an unpaid demo hold running out (paying for piece 2 is optional) is not news on the end card
+      else if (c.kind === "expired" && demoOverRef.current) return;
       else toast(c.text, { tone: c.kind === "paid" || c.kind === "shipped" ? "good" : c.kind === "expiring" ? "urgent" : "warn", ms: 6000 });
     };
     getLive(preview ? "staff" : "buyer").then(async (live) => {
@@ -223,9 +230,12 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
 
   // The order chat opens by itself after the celebration, but only when no other piece is live: a buyer is never
   // pulled out of a piece they could still tap. Otherwise the pay row in the action bar stays, with its timer.
+  // Buyer demo: piece 2 is the last piece. Once it is out, nothing opens by itself: the demo ends in the room on the
+  // win (server script), and paying for piece 2 is optional.
+  const demoLast = !!state?.isSandbox && state.items.some((i) => i.position >= 2 && i.state !== "queued");
   const autoItem = autoOpen ? (me?.holds.find((h) => h.orderId === autoOpen.orderId)?.itemId ?? autoOpen.itemId ?? null) : null;
   const liveItemId = state?.live?.itemId ?? null;
-  const autoOk = !!autoOpen && !preview && (state?.status === "ended" || !liveItemId || (!!autoItem && autoItem === liveItemId));
+  const autoOk = !!autoOpen && !preview && !demoLast && (state?.status === "ended" || !liveItemId || (!!autoItem && autoItem === liveItemId));
   useEffect(() => {
     if (!autoOpen || !autoOk) return;
     const href = `/o/${autoOpen.orderId}?from=${autoOpen.from}`;
@@ -374,10 +384,19 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
         {promo.orderId && <> <Link href={`/o/${promo.orderId}?from=promoted`} className="whitespace-nowrap underline decoration-2">Open order</Link></>}</> };
     }
     if (wonHere) {
-      if (wonHere.state === "held") return { tone: "lime", icon: "check", text: <>You got it! Pay within {wonHere.expiresAt ? <Countdown expiresAt={wonHere.expiresAt} size="sm" /> : mmss(0)}</> };
+      // the tap time (server's ms after the drop) goes here, in the bar the buyer just tapped: the piece card can be under it
+      const got = <>You got it{freshResult?.result === "won" && freshResult.ms != null && <> in {tapTime(freshResult.ms)}</>}!</>;
+      if (wonHere.state === "held") return { tone: "lime", icon: "check", text: demoLast ? <>{got} You beat the bots.</>
+        : <>{got} Pay within {wonHere.expiresAt ? <Countdown expiresAt={wonHere.expiresAt} size="sm" /> : mmss(0)}</> };
       return { tone: "lime", icon: "check", text: wonHere.state === "payment_claimed" ? "Payment sent · waiting for the shop to confirm" : "Paid · it's yours" };
     }
-    if (waitPos) return { tone: "yellow", icon: "queue", text: `You're #${waitPos} on the waitlist. We'll tell you the moment it's yours.` };
+    if (waitPos) {
+      // something that moves while the line waits: the next running hold on this size ends (my_status), then the queue moves
+      const nextIn = wait?.nextEndsAt ? Date.parse(wait.nextEndsAt) - now : 0;
+      return { tone: "yellow", icon: "queue", text: nextIn > 0 && now
+        ? <>You&apos;re #{waitPos} on the waitlist. Next hold ends in <span className="whitespace-nowrap font-mono">{mmss(Math.ceil(nextIn / 1000))}</span></>
+        : `You're #${waitPos} on the waitlist. We'll tell you the moment it's yours.` };
+    }
     if (freshResult && freshResult.result !== "won" && freshResult.result !== "waitlisted") return { tone: "peach", icon: "warning", text: freshResult.message };
     if (block) return { tone: "plain", icon: block === "Reconnecting…" ? "warning" : "clock", text: block };
     if (!joined) return { tone: "plain", icon: "tap", text: "Tap Dibs! to join and claim. First tap wins." };
@@ -392,16 +411,25 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
   const sandbox = state.isSandbox;
   const sold = live?.state === "sold_out";
   const chatLocked = !joined ? "Join the room to chat." : me?.banned ? "You can't chat in this sale room." : me?.muted ? "You're muted for a few minutes" : null;
-  const upcoming = [...state.items].sort((a, b) => a.position - b.position);
+  // the buyer demo drops pieces 1 and 2 only (bots.ts): later pieces would read "Next" for ever
+  const upcoming = state.items.filter((i) => !sandbox || preview || i.position <= 2).sort((a, b) => a.position - b.position);
   const startsIn = Math.max(0, Date.parse(state.startsAt) - now);
+  const firstIn = now ? startsIn : 0; // as a number of seconds on screen (now = 0 in the server render)
+  const dropped = state.items.some((i) => i.state !== "queued");
   const wide = !preview; // the two-column desktop layout (never inside the seller's phone preview)
   const showBar = !!live && state.status !== "ended";
   // the hold to pay for that is not the piece on screen (promotions on earlier pieces, unpaid wins)
   const payHold = me?.holds.find((h) => h.state === "held" && h.itemId !== live?.itemId)
     ?? me?.holds.find((h) => h.state === "payment_claimed" && h.itemId !== live?.itemId);
   const coachHold = me?.holds.find((h) => h.state === "held") ?? me?.holds.find((h) => h.state === "payment_claimed");
+  // my last winning tap as the server answered it: the end card keeps it after that hold runs out
+  const wonPos = result?.result === "won" && result.ms != null ? state.items.find((i) => i.itemId === result.itemId)?.position : undefined;
+  const wonEarlier = wonPos && result?.ms != null ? { position: wonPos, ms: result.ms } : null;
+  // ticker lines about me: my name, and (outside a demo room, where I am the only person) a piece I claimed
+  const myItems = new Set([...(me?.holds ?? []), ...(me?.waits ?? [])].map((x) => x.itemId).concat(result?.result === "won" ? [result.itemId] : []));
+  const isMe = (c: DropState["recent"][number]) => joined && !c.isBot && c.buyer === buyer && (sandbox || myItems.has(c.itemId));
   const coach = sandbox && !preview ? coachLine({
-    status: state.status, startsInMs: startsIn,
+    status: state.status, startsInMs: firstIn, dropped, pickFirst: !!live && joined && !chosen,
     live: live ? { position: live.position, soldOut: live.state === "sold_out" || live.variants.every((v) => v.left === 0) } : null,
     hold: coachHold ? { position: coachHold.position, state: coachHold.state as "held" | "payment_claimed", promoted: !!promo && promo.orderId === coachHold.orderId }
       : promoLive && promo ? { position: live?.position ?? 1, state: "held", promoted: true }
@@ -431,7 +459,7 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
         </Box>
       )}
 
-      {!showBar && payHold && <PayRow hold={payHold} promoted={!!promo && promo.orderId === payHold.orderId} big />}
+      {!showBar && payHold && !(sandbox && state.status === "ended") && <PayRow hold={payHold} promoted={!!promo && promo.orderId === payHold.orderId} big />}
 
       {prompt && live && prompt.itemId === live.itemId && (
         <button type="button" onClick={() => applyPrompt(prompt)}
@@ -455,7 +483,8 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
       )}
 
       {state.status === "ended" && (
-        sandbox ? <EndCard /> : (
+        sandbox ? <EndCard facts={demoFacts(me?.holds ?? [], wonEarlier)}
+          pay={me?.holds.filter((h) => h.state === "held").sort((a, b) => b.position - a.position)[0] ?? null} /> : (
           <Box tint="grey" className="flex flex-col gap-2">
             <StatePill state="ended" />
             <h1 className="text-3xl">That&apos;s a wrap</h1>
@@ -467,7 +496,9 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
       {state.status === "live" && !live && (
         <Box className="flex flex-col items-center gap-2 py-8 text-center">
           <Icon name="clock" size={36} draw />
-          <h1 className="text-xl font-extrabold">Next piece coming up…</h1>
+          <h1 className="text-xl font-extrabold">
+            {dropped ? "Next piece coming up…" : firstIn > 0 ? `Piece 1 drops in ${Math.ceil(firstIn / 1000)}…` : "Piece 1 is about to drop…"}
+          </h1>
           <p className="text-muted">Stay here. It drops for everyone at the same moment.</p>
         </Box>
       )}
@@ -475,11 +506,12 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
       {live && state.status !== "ended" && (
         <Box as="article" className="flex flex-col gap-3 p-3" aria-label={`Piece ${live.position}: ${live.title}`}>
           {/* photo height capped so title and price sit above the action bar at 360x640, smaller on short screens and
-              under the demo banner and coach */}
+              under the demo banner and coach; on desktop small enough that two rows of chips, Dibs! and its status line
+              still fit a 900 px tall window */}
           <div className={cx("mx-auto w-full",
             smallPhoto ? "max-w-[min(100%,20vh)] [@media(max-height:700px)]:max-w-[min(100%,15vh)]"
               : "max-w-[min(100%,30vh)] [@media(max-height:700px)]:max-w-[min(100%,22vh)]",
-            wide && "lg:max-w-[min(100%,34vh)]")}>
+            wide && "lg:max-w-[min(100%,26vh)]")}>
             <PhotoCarousel key={live.itemId} photos={photos} alt={live.title} onFirstLoad={() => setReadyFor(live.itemId)}>
               {sold && <Stamp word="SOLD" size="sm" className="absolute left-2 top-2" />}
               {live.state === "closed" && <span className="absolute left-2 top-2"><StatePill state="closed" size="sm" /></span>}
@@ -567,8 +599,12 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
       )}
 
       <section aria-labelledby="ticker-h" className="flex flex-col gap-2">
-        <h2 id="ticker-h" className="font-hand text-2xl font-normal tracking-normal">Sold to…</h2>
-        {state.recent.length ? <RoomTicker recent={state.recent} /> : <p className="font-hand text-lg text-muted">Nothing sold yet.</p>}
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+          <h2 id="ticker-h" className="font-hand text-2xl font-normal tracking-normal">Sold to…</h2>
+          {/* said only while this screen really is on the Nexconn room (not the dev bus, not the HTTP fallback) */}
+          {cfg?.mode === "nexconn" && connected && <span className="font-hand text-base text-muted">live via a Nexconn open channel</span>}
+        </div>
+        {state.recent.length ? <RoomTicker recent={state.recent} isMe={isMe} /> : <p className="font-hand text-lg text-muted">Nothing sold yet.</p>}
       </section>
 
       {!preview && cfg?.features.community && <ClubJoin shopId={state.shop.id} shopSlug={state.shop.slug} />}
@@ -628,7 +664,8 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
       )}
       {sandbox && <Banner />}
       {offline && <ConnectionBar status="offline" />}
-      {!preview && state.viewers != null && (
+      {/* not in a demo room: the banner already says who is there, and "0 watching" under it read as broken */}
+      {!preview && !sandbox && state.viewers != null && (
         <p className="mx-auto flex w-full max-w-xl items-center gap-1.5 px-4 pt-2 text-sm text-muted lg:max-w-[1100px]" data-testid="room-viewers">
           <Icon name="users" size={16} /><span className="font-mono">{state.viewers}</span> watching
         </p>
@@ -685,22 +722,24 @@ function PayRow({ hold, promoted, big }: { hold: MyStatus["holds"][number]; prom
   );
 }
 
-/** "Sold to Priya S. · 0.4 s" lines, newest first. Not a live region: bot sales are not read out (my own result is). */
-function RoomTicker({ recent }: { recent: DropState["recent"] }) {
+/** "Sold to Priya S. · 0.4 s" lines, newest first ("Sold to you" for mine). Not a live region: bot sales are not read
+ *  out (my own result is). */
+function RoomTicker({ recent, isMe }: { recent: DropState["recent"]; isMe: (c: DropState["recent"][number]) => boolean }) {
   return (
     <div className="h-[11.5rem] overflow-hidden [mask-image:linear-gradient(to_bottom,black_82%,transparent)]">
       <ol aria-live="off" aria-label="Sold and back in play" className="flex flex-col gap-1.5">
         {recent.slice(0, 3).map((c) => {
           const sold = c.t === "DB:Sold";
+          const me = isMe(c);
           return (
-            <li key={tickerKey(c)} className={cx("pop-in flex min-h-10 items-center gap-2 rounded-wobble border-2 border-ink px-3 py-1.5 font-hand text-lg leading-tight", sold ? "bg-card" : "bg-yellow")}>
+            <li key={tickerKey(c)} className={cx("pop-in flex min-h-10 items-center gap-2 rounded-wobble border-2 border-ink px-3 py-1.5 font-hand text-lg leading-tight", sold ? (me ? "bg-lime" : "bg-card") : "bg-yellow")}>
               <span className={cx("grid size-6 shrink-0 place-items-center rounded-full border-2 border-ink", sold ? "bg-pink" : "bg-lime")}>
                 <Icon name={sold ? "bag" : "arrowRight"} size={14} stroke={2.6} />
               </span>
               <span className="min-w-0 flex-1">
                 {c.t === "DB:Sold"
-                  ? <>Sold to {displayName(c.buyer)} · <span className="whitespace-nowrap">{tapTime(c.ms)}</span>{c.variantLabel && <span className="text-muted"> · {c.variantLabel}</span>}</>
-                  : c.buyer ? <>Back in play → {displayName(c.buyer)} from the waitlist</>
+                  ? <>Sold to {me ? <strong>you</strong> : displayName(c.buyer)} · <span className="whitespace-nowrap">{tapTime(c.ms)}</span>{c.variantLabel && <span className="text-muted"> · {c.variantLabel}</span>}</>
+                  : c.buyer ? <>Back in play → {me ? <><strong>you</strong>,</> : displayName(c.buyer)} from the waitlist</>
                   : <>Back in play → the {c.variantLabel} is free again</>}
               </span>
               {c.isBot && <span className="shrink-0 rounded-pill border-2 border-violet-ink bg-violet px-1.5 font-sans text-sm font-semibold text-violet-ink">🤖 Demo buyer</span>}
@@ -752,16 +791,24 @@ function ResultPanel({ wonHere, result, latencyRef, opening, openingSlow, onStay
   );
 }
 
-function EndCard() {
+/** The demo's last card: your times, then where to go next. Paying for a piece still held is offered, not asked. */
+function EndCard({ facts, pay }: { facts: string[]; pay: Hold | null }) {
   return (
-    <Box tint="lime" className="flex flex-col gap-3 overflow-hidden">
+    <Box tint="lime" className="flex flex-col gap-3 overflow-hidden" data-testid="demo-end">
       <Burst className="absolute -right-4 -top-8 size-24" />
       <h1 className="text-4xl">That&apos;s Dibs</h1>
+      {facts.length > 0 && (
+        <ul aria-label="Your demo" className="flex flex-col gap-1 font-hand text-xl leading-snug">
+          {facts.map((f) => (
+            <li key={f} className="flex items-start gap-2"><Icon name="check" size={20} stroke={2.8} className="mt-0.5 shrink-0" />{f}</li>
+          ))}
+        </ul>
+      )}
       <p className="leading-snug">A fair first tap, a waitlist that moves by itself, and an order chat for every winner. All on Nexconn channels.</p>
       <div className="flex flex-wrap gap-2">
         <LinkButton href="/try?role=seller" icon="users">Be the seller</LinkButton>
+        {pay && <LinkButton href={`/o/${pay.orderId}`} icon="rupee" variant="ghost">Pay for #{pay.position} (optional)</LinkButton>}
         <LinkButton href="/how-it-works" variant="ghost">How it works</LinkButton>
-        <LinkButton href="/impact" variant="ghost">Impact</LinkButton>
       </div>
     </Box>
   );

@@ -3,7 +3,7 @@
 import "./env.ts";
 import { test, after, before } from "node:test";
 import assert from "node:assert/strict";
-import { cancelPending, retryOnce, roomTick, runLoop, slotOf, type Row } from "../../src/lib/server/bots.ts";
+import { SCRIPT, cancelPending, retryOnce, roomTick, runLoop, slotOf, type Row } from "../../src/lib/server/bots.ts";
 import { fn, sql } from "../../src/lib/server/db.ts";
 import { measureRtt, startTryRetry as startTry } from "./helpers.ts";
 import { onDropEvent } from "../../src/lib/server/sandbox-hooks.ts";
@@ -37,7 +37,8 @@ before(async () => {
 });
 after(async () => { await sql.end({ timeout: 5 }); });
 
-type Run = { roomToLiveMs: number; startMs: number; liveLagMs: number; promotedAfterStart: number; promotedAfterTap: number; tapAt: number; confirmMs: number; win2AfterStart: number; winMs: number; waitPos: number };
+type Run = { roomToLiveMs: number; startMs: number; liveLagMs: number; promotedAfterStart: number; promotedAfterTap: number; tapAt: number; confirmMs: number; win2AfterStart: number; winMs: number; waitPos: number; endAfterWinMs: number };
+const dropStatus = (dropId: string) => sql`select status from drops where id = ${dropId}`.then((r) => r[0]?.status as string);
 
 async function judgeRun(i: number): Promise<Run> {
   const t0 = Date.now();
@@ -105,14 +106,39 @@ async function judgeRun(i: number): Promise<Run> {
     await sleep(2000);                                                        // looks at it, then taps either variant
     const w = await fn<J>("claim_dibs", p2.id, i % 2 ? "red" : "green", s.buyerId, new Date());
     assert.equal(w.result, "won", `quick tap wins piece 2 (${JSON.stringify(w)})`);
-    return { roomToLiveMs, startMs: tJoin - t0, liveLagMs: lag, promotedAfterStart: promotedAt - t0, promotedAfterTap: promotedAt - tapAt, tapAt: tapAt - t0, confirmMs, win2AfterStart: Date.now() - t0, winMs: w.ms, waitPos: c.position };
+    const win2AfterStart = Date.now() - t0;
+
+    // the end card's numbers come from my_status (0016): the server's own times, matching what happened above
+    const me = await fn<J>("my_status", s.dropId, s.buyerId);
+    const h1 = me.holds.find((h: J) => h.position === 1), h2 = me.holds.find((h: J) => h.position === 2);
+    assert.equal(h1.waitedAt, c.position, "place in line when tapped");
+    assert.equal(h1.ms, c.ms);
+    assert.ok(Math.abs(h1.promotedMs - (promotedAt - tapAt)) <= 2 * SLACK, `tap to promotion ${h1.promotedMs} ms (seen ${promotedAt - tapAt})`);
+    assert.deepEqual([h2.ms, h2.promotedMs, h2.waitedAt], [w.ms, null, null]);
+
+    // piece 2 is the last: the room tick that sees the win ends the demo 4 s later, and no piece 3 drops
+    await roomTick(s.dropId);
+    const wonAt = Date.now();
+    await waitFor("demo ends after the win", async () => (await dropStatus(s.dropId)) === "ended", SCRIPT.winEndMs + 3 * SLACK, 200);
+    const endAfterWinMs = Date.now() - wonAt;
+    assert.ok(endAfterWinMs >= SCRIPT.winEndMs - SLACK, `ended ${endAfterWinMs} ms after the win`);
+    assert.equal(await item(s.dropId, 3), undefined, "no piece 3");
+    await loop; // the runner stops by itself once the demo has ended and nothing is due
+    // paying for piece 2 after the end is optional and still gets the demo confirm (the end keeps confirm rows)
+    assert.deepEqual(await fn<J>("order_paid_claim", w.orderId, s.buyerId, ""), { ok: true });
+    await onDropEvent({ type: "order_paid_claim", dropId: s.dropId, orderId: w.orderId });
+    const loop2 = runLoop(s.dropId, 20_000);
+    await waitFor("piece 2 confirmed after the end", async () => (await sql`select 1 from orders where id = ${w.orderId} and state = 'paid'`)[0], 3000 + 3 * SLACK);
+    await loop2;
+    assert.equal((await sql`select count(*)::int as n from bot_schedule where drop_id = ${s.dropId} and done_at is null`)[0].n, 0, "nothing left to run");
+    return { roomToLiveMs, startMs: tJoin - t0, liveLagMs: lag, promotedAfterStart: promotedAt - t0, promotedAfterTap: promotedAt - tapAt, tapAt: tapAt - t0, confirmMs, win2AfterStart, winMs: w.ms, waitPos: c.position, endAfterWinMs };
   } finally {
     await finish(s.dropId, s.ownerId);
     await loop;
   }
 }
 
-test("buyer script: 5 simulated judges reach It's yours, pay, and win piece 2", { timeout: 480_000 }, async () => {
+test("buyer script: 5 simulated judges reach It's yours, pay, win piece 2, and the demo ends there", { timeout: 540_000 }, async () => {
   // one after another: from a laptop each query is a ~250 ms round trip to Mumbai, and 5 rooms in one process queue on one pool
   const runs: Run[] = [];
   for (let i = 0; i < Number(process.env.JUDGES ?? 5); i++) runs.push(await judgeRun(i));
@@ -125,6 +151,30 @@ test("buyer script: 5 simulated judges reach It's yours, pay, and win piece 2", 
     assert.ok(r.confirmMs <= 3000 + 3 * SLACK, `confirm in ${r.confirmMs} ms`);
     assert.ok(r.roomToLiveMs >= 2500 && r.roomToLiveMs <= 3000 + SLACK, `piece 2 ${r.roomToLiveMs} ms after the room tick`);
     assert.ok(r.win2AfterStart <= 90_000, `It's yours twice inside 90 s (${r.win2AfterStart})`);
+    assert.ok(r.endAfterWinMs <= SCRIPT.winEndMs + 3 * SLACK, `the demo ends ${r.endAfterWinMs} ms after the win`);
+  }
+});
+
+test("piece 2 is the last: nobody wins it, so the demo ends 16 s after it drops and no piece 3 follows", { timeout: 90_000 }, async () => {
+  const s = await startTry("buyer", "Last Piece");
+  await cancelPending(s.dropId);
+  await sql`select sandbox_next(${s.dropId}, ${s.ownerId}, 0, null, null)`;
+  // the scripted "next" for piece 2 (as the 85 s fallback runs it): it plans piece 2's bot taps and the end
+  await sql`insert into bot_schedule (drop_id, due_at, action, payload) values (${s.dropId}, clock_timestamp(), 'next', '{"ifPosition": 1}')`;
+  const loop = runLoop(s.dropId, 60_000);
+  try {
+    const p2 = await waitFor("piece 2 live", () => item(s.dropId, 2), 8000, 150);
+    await waitFor("demo ended", async () => (await dropStatus(s.dropId)) === "ended", SCRIPT.lastEndMs + 4 * SLACK, 250);
+    const [{ ms }] = await sql`select (extract(epoch from (ended_at - ${p2.live_at}::timestamptz)) * 1000)::int as ms from drops where id = ${s.dropId}`;
+    assert.ok(ms >= SCRIPT.lastEndMs - 100 && ms <= SCRIPT.lastEndMs + 2 * SLACK, `ended ${ms} ms after piece 2 dropped`);
+    const [sold] = await sql`select count(*)::int as n from claims c join buyers b on b.id = c.buyer_id where c.drop_item_id = ${p2.id} and b.is_bot`;
+    assert.ok(sold.n >= 4, `the bots took piece 2 before the end (${sold.n} bot claims)`);
+    assert.equal(await item(s.dropId, 3), undefined, "no piece 3");
+    await loop;
+    assert.equal((await sql`select count(*)::int as n from bot_schedule where drop_id = ${s.dropId} and done_at is null`)[0].n, 0, "nothing left to run");
+  } finally {
+    await finish(s.dropId, s.ownerId);
+    await loop;
   }
 });
 

@@ -73,10 +73,10 @@ export function Ledger({ rows, showPiece, onOpen, onCancel }: {
               {promotedHold && <Badge size="sm" tint="yellow" icon="arrowRight" className="pop-in">from waitlist</Badge>}
               <StatePill size="sm" state={p.state} label={r.state === "waitlisted" && r.waitPosition ? `#${r.waitPosition} waitlist` : p.label} />
               {r.isBot && (r.state === "payment_claimed" || r.state === "paid" || r.state === "shipped") && <span className="rounded-pill border-2 border-violet-ink bg-violet px-1.5 text-sm font-semibold text-violet-ink">🤖 demo payment</span>}
-              {r.state === "held" && r.expiresAt && <Countdown size="sm" expiresAt={r.expiresAt} />}
+              {r.state === "held" && r.expiresAt && <Countdown size="sm" expiresAt={r.expiresAt} announce={false} />}
             </div>
             {r.orderId && (ACTIVE.has(r.state)) && (
-              <div className="flex gap-1.5">
+              <div className="flex flex-wrap gap-1.5">
                 <Button size="sm" variant="ghost" icon="chat" onClick={() => onOpen(r)}>Order</Button>
                 <WaButton href={me.shop.isSandbox || r.isBot ? null : waBuyer(r.phone, { shop: me.shop.name, buyer: r.buyer, orderNo: r.orderNo, item: r.title, variant: r.variantLabel, orderId: r.orderId })} who={r.buyer} />
                 {(r.state === "held" || r.state === "payment_claimed") && (

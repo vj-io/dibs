@@ -9,6 +9,7 @@ import { getLive, type LiveMsg } from "@/lib/client/live";
 import { rupees } from "@/lib/codec";
 import type { Desk, DeskOrder, DropSummary, OrderState } from "@/lib/types";
 import { clock, errMsg, useMe, useWide, waBuyer, when } from "./kit";
+import { deskFeedFloor } from "./consoleLogic";
 import { WaButton } from "./Ledger";
 
 const GROUPS: { state: OrderState; title: string; pill: PillState }[] = [
@@ -32,12 +33,14 @@ export function DeskView() {
   const [feed, setFeed] = useState<LiveMsg[]>([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [drops, setDrops] = useState<DropSummary[] | null>(null);
   const loadRef = useRef<() => void>(() => {});
 
   const load = useCallback(() => api("GET /api/desk", undefined, { assigned: mine ? "me" : "all", state: waiting ? "held" : undefined })
     .then((d) => { setDesk(d); setErr(null); }, (e) => setErr(errMsg(e))), [mine, waiting]);
   useEffect(() => { loadRef.current = () => void load(); }, [load]);
   useEffect(() => { void load(); const t = setInterval(() => void load(), 10_000); return () => clearInterval(t); }, [load]);
+  useEffect(() => { api("GET /api/drops").then((r) => setDrops(r.drops), () => setDrops([])); }, []);
 
   const deskId = desk?.deskGroupId ?? me.shop.deskGroupId;
   useEffect(() => {
@@ -66,6 +69,8 @@ export function DeskView() {
     } catch (x) { toast(errMsg(x), { tone: "warn" }); } finally { setSending(false); }
   };
 
+  const floor = deskFeedFloor(me.shop.isSandbox, drops); // a demo slot's desk channel still carries earlier visitors' lines
+  const shown = floor ? feed.filter((m) => m.at >= floor) : feed;
   const total = desk ? Object.values(desk.orders).reduce((a, l) => a + l.length, 0) : 0;
   const wa = sel && !me.shop.isSandbox ? waBuyer(sel.phone, { shop: me.shop.name, buyer: sel.buyer, orderNo: sel.orderNo, item: sel.item, variant: sel.variantLabel, amount: rupees(sel.amountPaise), orderId: sel.orderId }) : null;
   const room = sel && <>{wa && <div className="mb-2"><WaButton href={wa} who={sel.buyer} /></div>}<OrderRoom key={sel.orderId} orderId={sel.orderId} viewer="staff" embedded /></>;
@@ -80,7 +85,7 @@ export function DeskView() {
         </div>
       </div>
 
-      <CsvPicker />
+      <CsvPicker drops={drops} />
 
       <div className={cx("grid gap-5", sel && wide ? "lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]" : "lg:grid-cols-[minmax(0,1fr)_380px]")}>
         <div className="flex min-w-0 flex-col gap-5">
@@ -105,7 +110,7 @@ export function DeskView() {
                           <span className="block truncate text-[0.95rem] text-muted">{o.variantLabel} · drop {o.dropCode}{o.assignedTo ? ` · ${o.assignedTo.staffId === me.staffId ? "you" : o.assignedTo.displayName}` : " · unassigned"}{o.utr ? ` · UTR ${o.utr}` : ""}{o.utr?.startsWith("DEMO-UTR-") ? " · 🤖 demo payment" : ""}</span>
                         </span>
                         <Price paise={o.amountPaise} size="sm" />
-                        {o.state === "held" && o.expiresAt && <Countdown size="sm" expiresAt={o.expiresAt} />}
+                        {o.state === "held" && o.expiresAt && <Countdown size="sm" announce={false} expiresAt={o.expiresAt} onDone={() => setTimeout(() => loadRef.current(), 800)} />}
                       </button>
                     </li>
                   ))}
@@ -129,8 +134,8 @@ export function DeskView() {
             {!deskId ? <p className="text-muted">The team desk is being set up.</p> : (
               <>
                 <ol className="flex max-h-[28rem] flex-col gap-1.5 overflow-y-auto pr-1" aria-label="Team desk feed" aria-live="polite">
-                  {!feed.length && <li className="text-muted">New orders and team messages show up here.</li>}
-                  {feed.map((m) => m.card?.t === "DB:Desk" ? (
+                  {!shown.length && <li className="text-muted">New orders and team messages show up here.</li>}
+                  {shown.map((m) => m.card?.t === "DB:Desk" ? (
                     <li key={m.id} className="flex flex-wrap items-center gap-x-2 rounded-md bg-paper px-2 py-1 text-[0.95rem]">
                       <span className="font-mono text-sm text-muted">{clock(m.at)}</span>
                       <Badge size="sm" tint={m.card.event === "new" ? "lime" : m.card.event === "paid" ? "mint" : m.card.event === "cancelled" ? "grey" : "sky"}>{EVENT[m.card.event] ?? m.card.event}</Badge>
@@ -172,15 +177,14 @@ function Toggle({ on, onClick, icon, children }: { on: boolean; onClick: () => v
 }
 
 /** Pick a drop, download its orders as CSV (GET /api/exports/orders.csv). */
-function CsvPicker() {
-  const [drops, setDrops] = useState<DropSummary[] | null>(null);
-  const [id, setId] = useState("");
-  useEffect(() => { api("GET /api/drops").then((r) => { setDrops(r.drops); setId(r.drops[0]?.dropId ?? ""); }, () => setDrops([])); }, []);
+function CsvPicker({ drops }: { drops: DropSummary[] | null }) {
+  const [pick, setPick] = useState("");
+  const id = pick || drops?.[0]?.dropId || "";
   if (!drops?.length) return null;
   return (
     <div className="flex flex-wrap items-end gap-2" data-testid="csv-picker">
       <Field label="Orders sheet" className="min-w-0 flex-1 basis-56">
-        <Select name="csvDrop" value={id} onChange={(e) => setId(e.target.value)}>
+        <Select name="csvDrop" value={id} onChange={(e) => setPick(e.target.value)}>
           {drops.map((d) => <option key={d.dropId} value={d.dropId}>{d.title} · {when(d.startsAt)}</option>)}
         </Select>
       </Field>

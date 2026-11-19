@@ -186,11 +186,18 @@ test("shop club: join, chat, announce, review, moderation and permissions", asyn
   assert.equal(lv.body.memberCount, 0);
   ok(await b3.c.post("/api/club/send", { shopSlug: A.slug, text: "still here?" }), 403);
 
-  // join and leave: 6 a minute per buyer each
-  for (let i = 0; i < 5; i++) ok(await b3.c.post("/api/club/join", { shopSlug: A.slug }));
-  ok(await b3.c.post("/api/club/join", { shopSlug: A.slug }), 429);
-  for (let i = 0; i < 5; i++) ok(await b3.c.post("/api/club/leave", { shopSlug: A.slug }));
-  ok(await b3.c.post("/api/club/leave", { shopSlug: A.slug }), 429);
+  // join and leave: 6 a minute per buyer each. rate_add counts in fixed clock-minute windows, so a run that crosses a
+  // minute boundary can pass up to 12 in a row; a 429 must still come within 13 tries
+  const limited = async (path: string) => {
+    for (let i = 0; i < 13; i++) {
+      const r = await b3.c.post(path, { shopSlug: A.slug });
+      if (r.status === 429) return i;
+      ok(r);
+    }
+    return -1;
+  };
+  assert.notEqual(await limited("/api/club/join"), -1, "join is rate limited");
+  assert.notEqual(await limited("/api/club/leave"), -1, "leave is rate limited");
 });
 
 test("demo shop: staff cannot post, remove or hide in its public club; the manage screen still loads and says it is a demo", async () => {

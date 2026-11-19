@@ -15,8 +15,9 @@ export const SCRIPTS: Record<TryRole, ScriptStep[]> = {
     { atMs: 18_000, text: "Bots never pay: each bot hold runs out after 12 s and the next in line is promoted." },
     { atMs: null, text: "Demo: you get 90 seconds to pay; bots get 12" },
     { atMs: null, text: "When it's yours, tap I've paid. Asha (demo staff) confirms 3 s later." },
-    { atMs: null, text: "Back in the sale room, piece 2 drops 3 s later. Every size keeps one piece for 6 s, so a quick tap wins it outright." },
-    { atMs: 180_000, text: "The demo room closes after 3 minutes." },
+    { atMs: null, text: "Back in the sale room, piece 2 drops 3 s later. Every size keeps one piece for 10 s, so a quick tap wins it outright." },
+    { atMs: null, text: "Piece 2 is the last: the demo ends 4 s after you win it, or 16 s after it drops, and shows your own times. Paying for piece 2 is optional." },
+    { atMs: 180_000, text: "The demo room closes after 3 minutes at the latest." },
   ],
   seller: [
     { atMs: 0, text: "40 🤖 demo buyers are in your room. Nothing drops until you press Drop next." },

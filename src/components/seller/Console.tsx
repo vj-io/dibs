@@ -19,7 +19,7 @@ import { clock, errMsg, ShareCard, since, useMe, useNow } from "./kit";
 import { ACTIVE, Ledger } from "./Ledger";
 import { RoomChat } from "./RoomChat";
 import { ShareKit } from "./ShareKit";
-import { DEMO_BUYERS, sellerCoach } from "./consoleLogic";
+import { DEMO_BUYERS, sellerCoach, type CoachStep } from "./consoleLogic";
 
 const REFETCH = new Set(["DB:Sold", "DB:Back", "DB:Stock", "DB:State", "DB:Item"]);
 const ITEM_PILL: Record<ItemState, { state: PillState; label: string }> = {
@@ -28,6 +28,8 @@ const ITEM_PILL: Record<ItemState, { state: PillState; label: string }> = {
   sold_out: { state: "sold_out", label: "Sold out" },
   closed: { state: "closed", label: "Closed" },
 };
+/** The console section a coach step points at ("Show me" scrolls there); drop and end happen in the controls. */
+const SHOW_ME: Partial<Record<CoachStep, string>> = { claims: "claims", moderation: "moderation", results: "ended-summary" };
 const REASONS = ["Buyer asked to cancel", "Buyer can't be reached", "Duplicate order", "Payment never arrived"];
 
 export function Console({ dropId }: { dropId: string }) {
@@ -130,6 +132,9 @@ export function Console({ dropId }: { dropId: string }) {
   const holds = pieceRows.filter((r) => r.state === "held" || r.state === "payment_claimed").length;
   const ledgerRows = scope === "piece" && liveItem ? pieceRows : c.ledger;
   const id = { id: dropId };
+  // seller demo: Drop next is the big button only while the coach is on the drop step
+  const coach = state.isSandbox ? sellerCoach(state, c) : null;
+  const dropSecondary = !!coach && coach.step !== "drop";
 
   const controls = (
     <div className={cx(
@@ -137,7 +142,7 @@ export function Console({ dropId }: { dropId: string }) {
       "lg:static lg:rounded-wobble lg:border-[2.5px] lg:bg-card lg:p-4 lg:shadow-ink",
     )} data-testid="controls">
       {state.status !== "ended" && (
-        <p className="mb-2 flex min-w-0 items-center gap-2 text-[0.95rem] lg:text-base">
+        <p className={cx("mb-2 min-w-0 items-center gap-2 text-[0.95rem] lg:flex lg:text-base", dropSecondary ? "hidden" : "flex")}>
           {next ? (
             <>
               <span className="shrink-0 text-muted">Next up:</span>
@@ -154,7 +159,7 @@ export function Console({ dropId }: { dropId: string }) {
             onClick={() => act("live", () => api("POST /api/drops/:id/live", undefined, id), "You're live. Buyers can chat now.")}>Go live</Button>
         )}
         {state.status === "live" && (
-          <Button icon="arrowRight" className="col-span-2" busy={busy === "next"} busyLabel="Dropping…" disabledReason={next ? undefined : "Queue empty"}
+          <Button icon="arrowRight" variant={dropSecondary ? "ghost" : "primary"} className="col-span-2" busy={busy === "next"} busyLabel="Dropping…" disabledReason={next ? undefined : "Queue empty"}
             onClick={() => act("next", () => api("POST /api/drops/:id/next", undefined, id))}>Drop next</Button>
         )}
         {state.status === "live" && (
@@ -180,10 +185,15 @@ export function Console({ dropId }: { dropId: string }) {
         {state.isSandbox && <span className="text-sm font-semibold text-violet-ink" data-testid="demo-buyers">🤖 {DEMO_BUYERS} demo buyers in the room</span>}
       </div>
       <LiveBar status={status} />
-      {state.isSandbox && (
-        <p className="flex items-center gap-2 rounded-wobble border-2 border-dashed border-violet-ink bg-violet px-3 py-2 font-hand text-lg leading-tight" data-testid="seller-coach">
+      {coach && (
+        <p className="flex items-center gap-2 rounded-wobble border-2 border-dashed border-violet-ink bg-violet px-3 py-1 font-hand text-lg leading-tight" data-testid="seller-coach">
           <Icon name="sparkle" size={20} className="shrink-0 text-violet-ink" />
-          <span><span className="sr-only">Demo guide: </span>{sellerCoach(state, c)}</span>
+          <span className="min-w-0 flex-1 py-1"><span className="sr-only">Demo guide: </span>{coach.text}</span>
+          {SHOW_ME[coach.step] && (
+            <a href={`#${SHOW_ME[coach.step]}`} className="inline-flex min-h-12 shrink-0 items-center px-1 font-sans text-base font-semibold text-violet-ink underline decoration-2 underline-offset-4" data-testid="coach-show-me">
+              Show me<span aria-hidden="true">&nbsp;↓</span>
+            </a>
+          )}
         </p>
       )}
 
@@ -192,7 +202,7 @@ export function Console({ dropId }: { dropId: string }) {
           {controls}
 
           {ended && (
-            <Card tint="mint" className="flex flex-col gap-2" data-testid="ended-summary">
+            <Card tint="mint" id="ended-summary" className="flex scroll-mt-4 flex-col gap-2" data-testid="ended-summary">
               <h2 className="text-2xl">Drop ended</h2>
               <p>{c.ledger.filter((r) => ACTIVE.has(r.state)).length} pieces won · {c.ledger.filter((r) => r.state === "paid" || r.state === "shipped").length} paid · {c.ledger.filter((r) => r.state === "held" || r.state === "payment_claimed").length} holds still running until paid or expired.</p>
               <div className="flex flex-wrap gap-2">
@@ -246,7 +256,7 @@ export function Console({ dropId }: { dropId: string }) {
             <Card tint="paper" className="text-center"><p className="font-semibold">Nothing is live right now.</p><p className="text-muted">{next ? "Press Drop next to put the next piece live." : "Every piece has dropped. End the drop when holds are paid."}</p></Card>
           )}
 
-          <section className="flex flex-col gap-2" aria-labelledby="ledger-h">
+          <section id="claims" className="flex scroll-mt-4 flex-col gap-2" aria-labelledby="ledger-h">
             <div className="flex flex-wrap items-center gap-2">
               <h2 id="ledger-h" className="text-2xl">Claims</h2>
               {liveItem && (
@@ -305,7 +315,7 @@ export function Console({ dropId }: { dropId: string }) {
             if (hidden.current.has(m.id)) return; // its hide card arrived first
         setMsgs((xs) => (xs.some((x) => x.id === m.id) ? xs : [...xs, m]));
           }} />
-        <Card flat className="flex flex-col gap-3" data-testid="moderation">
+        <Card flat id="moderation" className="flex scroll-mt-4 flex-col gap-3" data-testid="moderation">
           <h2 className="flex items-center gap-2 text-xl"><Icon name="shield" />Moderation</h2>
           {c.bans.length > 0 && (
             <ul className="flex flex-col gap-2" aria-label="Muted and banned">

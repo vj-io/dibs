@@ -24,11 +24,11 @@ No sign-up, no second device.
 
 1. Open `/try` and tap **Be a buyer**.
 2. You join a demo sale room with 40 🤖 demo buyers. A banner says so: "Demo room · 40 🤖 demo buyers · nothing here is real money".
-3. Five seconds after the room opens on your screen, piece 1 goes live. About ten bots tap 0.08 to 0.4 seconds after it goes live. Tap **Dibs!** yourself. You will almost certainly land on the waitlist: "You're #3 on the waitlist." The waitlist promotion and the order room come about 25 seconds after the tap (about 34 seconds from the click), measured over 25 simulated judges on this build (22 to 27 s) with 12-second bot holds. With the earlier 20-second bot holds a production check measured about 40 seconds after the tap (about 50 from the click).
+3. Five seconds after the room opens on your screen, piece 1 goes live. About ten bots tap 0.08 to 0.4 seconds after it goes live. Tap **Dibs!** yourself. You will almost certainly land on the waitlist: "You're #3 on the waitlist." The waitlist promotion and the order room come about 25 seconds after the tap (about 34 to 37 seconds from the click in a production audit on 20 Nov 2026; 22 to 27 s after the tap over 25 simulated judges), with 12-second bot holds.
 4. Bots never pay. Each bot hold runs out after 12 seconds, and the next buyer in line is promoted. When it is your turn you see "It's yours! The buyer ahead didn't pay" and an order chat opens.
-5. In the order chat you see the order card and a payment card that reads "Demo shop: nothing to pay" (the demo payment cannot be paid, so there is no UPI link or QR to scan). Tap **I've paid**. Asha, a labelled demo staff member, confirms; in a manual run on production "Paid · confirmed by Asha (demo staff)" showed about 5 seconds after the tap. You get 90 seconds to pay in the demo; bots get 12 (these timings are also disclosed on `/try` and `/how-it-works`).
-6. Piece 2 goes live only after you are back in the room. Bots wait 1.5 to 3 seconds this time, so a quick tap wins outright. The room ticker shows "Sold to You" with your time.
-7. The demo room closes after 3 minutes with a "That's Dibs" card and links to the seller view.
+5. In the order chat you see the order card and a payment card that reads "Demo shop: nothing to pay" (the demo payment cannot be paid: on a laptop the card shows a QR code, but it only encodes the plain text "Dibs demo: no real payment", not a payable UPI link). Tap **I've paid**. Asha, a labelled demo staff member, confirms; in a manual run on production "Paid · confirmed by Asha (demo staff)" showed about 5 seconds after the tap. You get far longer to pay in the demo than the bots do (the timings are also disclosed on `/try` and `/how-it-works`).
+6. Piece 2 goes live 3 seconds after you are back in the room. The bots take one unit of each option at 1.5 to 3 seconds and leave the last one for 10 seconds, so a quick tap wins it outright; the room ticker says "Sold to you" with your time.
+7. Piece 2 is the last piece. The demo ends about 4 seconds after you win it (or 16 seconds after it drops if you don't), with a "That's Dibs" card showing your own times (place on the waitlist, seconds from tap to "It's yours", your piece-2 tap time) and links to the seller view. Paying for piece 2 is optional. A 3-minute limit is the backstop.
 
 To run the seller side instead, tap **Be the seller**. You get the live console with the same 40 bots in the room. Press **Drop next**, watch taps, holds and waitlists fill the ledger, see a bot hold expire and the next buyer get promoted, open the team desk, mark an order paid and shipped, and mute a bot. A bot posts a fake UPI ID about 30 seconds in; the scam shield blocks it and it shows in the moderation log.
 
@@ -179,7 +179,7 @@ Stack: Next.js 16 (App Router), TypeScript, Tailwind v4, Supabase Postgres (engi
 | Nexconn proof of concept | The live findings in `docs/NEXCONN_FINDINGS.md` | `node --env-file=.env.local scripts/nexconn-poc.ts`, `python scripts/nexconn-poc-browser.py [--live]` |
 | Static checks | Types, lint, secrets | `npm run typecheck`, `npm run lint`, `bash scripts/secret-scan.sh` |
 
-All of these use synthetic taps and simulated people. One browser pass of the judge-seller path (7 steps) was also run by hand. Simulated judges in the sandbox tests reached "It's yours" about 50 seconds after the click and won piece 2 by 65 to 70 seconds.
+All of these use synthetic taps and simulated people. One browser pass of the judge-seller path (7 steps) was also run by hand. Simulated judges in the sandbox tests reached "It's yours" and then won piece 2 outright, and their demo ended 4.3 to 4.5 seconds after the win was seen.
 
 ### Production load simulation (synthetic taps from one laptop)
 
@@ -248,6 +248,18 @@ From `.env.example`:
 - Phone numbers never appear in Nexconn messages or public responses. Public names are first name plus last initial. A buyer can delete their data from `/me`.
 - Headers: no framing (`X-Frame-Options: DENY`, `frame-ancestors 'none'`), `nosniff`, strict referrer policy. Row-level security is on for the tables; the anon role can call nothing (tested).
 - `bash scripts/secret-scan.sh` scans tracked files for likely secrets before each push.
+
+## Business and growth
+
+**Who pays.** The seller. Buyers use it free, with no app and no sign-up beyond a name and phone number.
+
+**Pricing hypothesis (untested).** Free for small drops. A flat monthly fee per shop above that. No cut of sales, because Dibs does not handle money. The price point is not set. We will ask the first sellers what a drop is worth to them before we choose one.
+
+**Go to market.** The seller's own WhatsApp group is the channel. Each drop gives a share link and QR code. Buyers open it, type a name and phone number, and are in. Every drop is a message the seller already sends. The drop links and the shop club are the growth loop.
+
+**First seller (a plan, not a result).** Kundanvi Jewels, a jewellery seller who already sells on WhatsApp, is the planned first real drop. **No real drop has run yet.** Real Dibs buyers on our Nexconn App Key: 0 until that drop.
+
+**Market.** Estimates vary. Redseer projected Indian live commerce at $4 to 5 billion GMV by 2025 (via Adgully). IMARC puts it at about $7.0 billion in 2025. We cite both, as context, not as our forecast. Tanishq reported around ₹100 crore in sales through video calls over two months in 2020 (Business Insider India), which is why video viewing is on our list.
 
 ## Not in this build
 

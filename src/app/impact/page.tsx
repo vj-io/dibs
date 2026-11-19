@@ -22,7 +22,7 @@ const CARDS: { key: keyof ImpactTotals; label: string; icon: IconName; tint: Tin
 
 export default async function Impact() {
   const t = await load();
-  const empty = !!t && Object.values(t).every((v) => Number(v) === 0);
+  const empty = !!t && (Number(t.buyers) === 0 || Object.values(t).every((v) => Number(v) === 0));
   return (
     <>
       <AppHeader right={<LinkButton href="/try" variant="primary" size="sm" icon="tap">Try the demo</LinkButton>} />
@@ -37,7 +37,7 @@ export default async function Impact() {
           <EmptyState className="mt-8 max-w-xl" icon="sparkle" title="No real drop has run yet."
             body="Numbers appear here after the first real drop. Demo-room activity is never counted." />
         )}
-        {t && (
+        {t && !empty && (
           <ul className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {CARDS.map((c, i) => (
               <li key={c.key}>
@@ -56,7 +56,7 @@ export default async function Impact() {
           <ul className="mt-4 flex flex-col gap-3 text-lg">
             {[
               "Sandbox shops and sandbox drops: everything you see on /try.",
-              "Demo bots: they are labelled 🤖 and never pay.",
+              "Demo bots and demo orders. Bots are labelled 🤖; no real money moves, and demo orders never count here.",
               "Drops that are still scheduled and have not gone live.",
             ].map((x) => (
               <li key={x} className="flex items-start gap-3"><Icon name="cross" size={22} stroke={3} className="mt-1 shrink-0 text-pink-ink" /><span>{x}</span></li>

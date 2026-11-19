@@ -45,7 +45,8 @@ export function StatePill({ state, label, size, className }: { state: PillState;
   return (
     <Badge tint={p.tint} size={size} className={cx(state === "live" && "font-extrabold tracking-wide", className)}
       icon={state === "live" ? undefined : p.icon}>
-      {state === "live" && <span aria-hidden="true" className="live-dot mr-0.5 inline-block size-2.5 rounded-full bg-pink ring-2 ring-ink" />}
+      {/* ml/mr leave room for the 2 px ring inside the label's overflow box: it clipped on the left and touched the L */}
+      {state === "live" && <span aria-hidden="true" className="live-dot ml-0.5 mr-1.5 inline-block size-2.5 rounded-full bg-pink ring-2 ring-ink" />}
       {label ?? p.word}
     </Badge>
   );

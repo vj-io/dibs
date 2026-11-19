@@ -39,10 +39,12 @@ export type CountdownProps = {
   /** Visible lead-in, e.g. "Pay within". */
   label?: string;
   className?: string;
+  /** false: never speaks (rows in a list, where many timers would talk over each other). Default true. */
+  announce?: boolean;
 };
 
 /** MM:SS in mono. aria-live is off on the ticking digits; a polite region speaks only at 2:00, 1:00 and 0:10. */
-export function Countdown({ expiresAt, paused, onDone, urgentBelow = 120, size = "md", label, className }: CountdownProps) {
+export function Countdown({ expiresAt, paused, onDone, urgentBelow = 120, size = "md", label, className, announce = true }: CountdownProps) {
   const t = useNow();
   const [frozenAt, setFrozenAt] = useState<number | null>(null);
   if (paused && frozenAt === null && t !== null) setFrozenAt(t);
@@ -52,6 +54,13 @@ export function Countdown({ expiresAt, paused, onDone, urgentBelow = 120, size =
   const end = Date.parse(expiresAt);
   const sec = at === null || Number.isNaN(end) ? null : Math.max(0, Math.ceil((end - at) / 1000));
   const urgent = sec !== null && sec < urgentBelow && !paused;
+
+  // speak only when a threshold is crossed while this timer is on screen, never the one it starts in
+  // (a 1:30 hold used to announce "Under 2 minutes left." the moment it appeared)
+  const msg = sec === null ? "" : countdownAnnouncement(sec);
+  const [start, setStart] = useState<{ at: string; msg: string } | null>(null);
+  if (sec !== null && start?.at !== expiresAt) setStart({ at: expiresAt, msg });
+  const spoken = announce && !paused && start?.at === expiresAt && msg !== start.msg ? msg : "";
 
   const done = useRef(false);
   useEffect(() => { done.current = false; }, [expiresAt]);
@@ -72,7 +81,7 @@ export function Countdown({ expiresAt, paused, onDone, urgentBelow = 120, size =
         {sec === null ? "--:--" : mmss(sec)}
       </span>
       {paused && <span className="font-sans font-semibold">paused</span>}
-      <span className="sr-only" aria-live="polite">{paused || sec === null ? "" : countdownAnnouncement(sec)}</span>
+      {announce && <span className="sr-only" aria-live="polite">{spoken}</span>}
     </span>
   );
 }

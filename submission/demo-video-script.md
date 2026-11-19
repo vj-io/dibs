@@ -1,55 +1,64 @@
-# Dibs: demo video script (v3, 2:57, narrated)
+# Dibs: demo video script (v6, 3:21, narrated)
 
 Team **Kaching** · Vaibhav Jangid · Nexconn Build Challenge 2026 · Track: Marketplace & Support
 
-This is the plan the current cut follows: `submission/video/dibs-demo.mp4`. Earlier cuts are kept: `dibs-demo-v1.mp4` (2:34) and `dibs-demo-v2.mp4` (the same as this one except the scam-shield scene, recorded before the app began refusing such messages before sending). The exact spoken lines with their times are in `submission/video/narration.txt`.
+This is the plan the current cut follows: `submission/video/dibs-demo.mp4`. The exact spoken lines with their times are in `submission/video/narration.txt`. The v5 cut (2:57, with the seller tour on the demo room) was moved to the Trash on 20 Nov 2026 when v6 was rendered.
 
-Style: documentary voiceover, one continuous track with no pauses (no gap of 0.45 s or longer in the voice), fast, animation on every beat, doodle look (paper, ink, lime, hot pink). 31 lines, 560 words. Captions for every line are burned in.
+What changed in v6: the "be the seller" tour of the demo room is replaced by **one real drop on production, seen from both sides at the same moment** (the buyer's phone on the left, the seller's console on the right), and a new scene shows **four test phones racing for one piece with two units**. Both were recorded in one capture run on the deployed app with a throwaway test shop and test buyers, which were deleted afterwards. The bot-race line "The server decides who was first…" moved, unchanged, from the buyer scene to the four-phone scene.
+
+Style: documentary voiceover, one continuous track with no pauses (no gap of 0.45 s or longer in the voice), fast, animation on every beat, doodle look (paper, ink, lime, hot pink). 36 lines, 640 words. Captions for every line are burned in.
 
 ## Honesty rules for this video
 
-- Every app picture is a real screen. Scenes 3, 4, 5, 9 and the first half of 7 were recorded on the deployed app, https://tapdibs.vercel.app, on 19 Nov 2026, and carry a "real screen" tag.
-- Scene 6 (new seller) and the second half of scene 7 (club post reaching a member) are screenshots from the project's own end-to-end runs on a test build with sample data. They are tagged "screenshot · local test build · sample data" and "screenshot · test run · synthetic member", and the address bar shows `localhost`. Nothing says or implies they are production. The staff invite link is covered.
-- Every bot is labelled 🤖 on screen and the app's own banner "Demo room · 40 🤖 demo buyers · nothing here is real money" stays in the demo cuts. The payment card shown is the demo one ("Demo shop: nothing to pay", with "Pay with UPI (demo)" switched off).
-- Footage that is sped up, slowed or paused says so in a tag under the screen.
-- No real drop has run and the club has no real members. The end card and the club scene say so. No real users, sales or money are shown or implied.
-- Not claimed anywhere: video calling, a Hindi interface, or blocking a message before delivery. The scam scene shows the app refusing the message before it is sent, and notes that the server also removes anything sent around the app.
+- Every app picture is a real screen. Scenes 3, 4, 5, 8, 10 and the first half of 7 were recorded on the deployed app, https://tapdibs.vercel.app (scenes 3 and 4 on 19 Nov 2026, scenes 5 and 8 on 20 Nov 2026), and carry a "real screen", "real drop on production" or "test buyers on production" tag.
+- Scenes 5 and 8 use a throwaway **test** shop, "Meera Jewels (test)", with UPI ID `test@upi`, two test pieces and four test buyers ("Priya Test", "Rohan Test", "Aisha Test", "Kabir Test", phones 90000 00001 to 90000 00004). The scene tags say "test shop and test buyers" and "test buyers · scripted taps", and the voice says "test shop and test buyers" and "four test phones". The taps were scripted (a fixed human-like delay after each phone saw the piece, in a random order); the outcome was decided by the server. Nothing was paid: "I've paid" and "Payment received" are the app's own buttons, pressed on a test order.
+- The test shop, its drop, products, photos, claims and orders, the four buyers and the seller's sign-in account were deleted after the capture, and the deletion was checked (shop, drop, claim, buyer, staff and auth rows all 0; both photo URLs answer HTTP 400; `/api/impact` returned to the same totals as before the run: 3 drops, 0 buyers, 0 claims won, 0 paid orders).
+- Scene 6 (new seller) and the second half of scene 7 (club post reaching a member) are screenshots from the project's own end-to-end runs on a test build with sample data. They are tagged "screenshot · local test build · sample data" and "screenshot · test run · synthetic member", and the address bar shows `localhost`. The staff invite link is covered.
+- Every bot is labelled 🤖 on screen and the app's own banner "Demo room · 40 🤖 demo buyers · nothing here is real money" stays in the demo cuts. The demo payment card is the demo one ("Demo shop: nothing to pay").
+- Footage that is sped up, slowed or paused says so in a tag next to the screen ("sped up 2.5× · both screens", "slow motion 0.4× · all four phones", "paused"). In scene 5 both screens always follow one clock, so what is on the phone and on the console at any frame happened at the same moment.
+- No real drop with real buyers has run and the club has no real members. The end card and the club scene say so. No real users, sales or money are shown or implied.
+- Not claimed anywhere: video calling, a Hindi interface, or blocking a message before delivery. The scam scene shows the app refusing the message before it is sent.
 
 ## Numbers used, and where each comes from
 
 | Number | Where it appears | Source |
 | --- | --- | --- |
-| 40 demo bots; try it in 60 seconds | scenes 3 and 10 | README.md, "Try it in 60 seconds" |
+| 40 demo bots; try it in 60 seconds | scenes 3 and 11 | README.md, "Try it in 60 seconds" |
 | Bot hold runs out after 12 s | scene 3 | README.md, same section |
-| "23 seconds after my tap" (on screen also: 22 to 27 s over 25 simulated runs) | scene 3 | this recording (tap at 14.72 s, "It's yours" at 37.88 s); the range is from README.md |
-| 300 synthetic taps inside 504 ms on 2 units; 2 winners; 200 waitlisted; 98 "waitlist full"; 0 errors; 8 of 8 database invariants; 19 Nov 2026 | scene 8 | README.md "Load test", docs/WRITEUP.md |
-| Both winning taps 163 ms and 181 ms, from one laptop ("under 200 ms" in the voice) | scene 8 | same |
+| "23 seconds after my tap" (on screen also: 22 to 27 s over 25 simulated runs) | scene 3 | the 19 Nov recording (tap at 14.72 s, "It's yours" at 37.88 s); the range is from README.md |
+| "Within a second" (Drop next to the piece on Priya's phone) | scene 5 | the 20 Nov recording: Drop next pressed at 51.64 s, the piece on the phone at 52.59 s, on the console's own live card at 52.70 s (`work/cap2/v_priya`, `v_seller`, one clock) |
+| Ledger "tapped in 3.8 s" (Rohan) and "6.3 s" (Priya); hold timers 10:00 | scene 5 | app screens; the server's `claims.ms_after_live` was 3753 and 6318 ms (`work/cap2/v_run.json`, claims_A); 10 minutes is the default `hold_seconds` of a shop |
+| ₹1,450 and ₹2,200; order #2 | scenes 5 and 8 | the test pieces made for the capture, as the app shows them |
+| Four phones, one piece, two units | scene 8 | the capture setup (`work/rec4.py`) |
+| WON · 1.5 s (Kabir), WON · 1.6 s (Aisha), #1 WAITLIST · 2.2 s (Rohan), #2 WAITLIST · 2.5 s (Priya); rank 1 to 4 | scene 8 | the server's own record for that piece: `claims.ms_after_live` 1535, 1600, 2188, 2531 ms in commit order Kabir, Aisha, Rohan, Priya (`v_run.json`, claims_B), shown the app's way (`tapTime`: one decimal); the winners' phones say "You tapped 1.5 s / 1.6 s after it dropped · answer in 257 / 272 ms" |
+| 300 synthetic taps inside 504 ms on 2 units; 2 winners; 200 waitlisted; 98 "waitlist full"; 0 errors; 8 of 8 database invariants; 19 Nov 2026 | scene 9 | README.md "Load test", docs/WRITEUP.md |
+| Both winning taps 163 ms and 181 ms, from one laptop ("under 200 ms" in the voice) | scene 9 | same |
 | Shop club median delivery 213 ms, 10 of 10, our test, 19 Nov 2026 | scene 7 | README.md "Shop club" |
-
-The first cut's "about 0.4 seconds" card latency line is removed.
 
 ## Scenes
 
 | # | Time | On screen | Narration (summary; exact text in narration.txt) |
 | --- | --- | --- | --- |
-| 1 | 0:00 to 0:12 | Drawn group chat flooding with "booked!!", captioned "illustration · not a real chat". | Sellers run drops in group chats; two people say booked; nobody can prove who was first. |
+| 1 | 0:00 to 0:12 | Drawn group chat flooding with "booked!!", captioned "illustration · not a real chat". | Sellers run drops in group chats; nobody can prove who was first. |
 | 2 | 0:12 to 0:25 | Title, then the real seller console and a real buyer phone at the moment of Drop next. | This is Dibs. First tap wins. Built on the Nexconn Chat SDK. |
-| 3 | 0:25 to 1:13 | Production `/try` → Be a buyer. 40 🤖 bots, piece 1 drops, "#3 on the waitlist", the ticker, the server-decides sketch, bot holds expiring after 12 s, "It's yours" 23 s after the tap, the order room, the demo payment card, I've paid, "Paid · confirmed by Asha (demo staff)". | The judge demo; the server decides in one locked transaction; bots never pay; the queue moves; Dibs never touches the money; the demo has nothing to pay. |
-| 4 | 1:13 to 1:22 | Production room chat: a UPI ID is typed and Send is pressed; it never appears in the room, and the red line under the box says to use the order chat. Stamp: "refused before sending". | The scam shield refuses it before it reaches the room. |
-| 5 | 1:22 to 1:43 | Production `/try` → Be the seller: Drop next, the claims ledger with 🤖 Demo buyer pills and "🤖 demo payment", a hold expiring and "from waitlist", the Desk tab (mark paid, mark shipped, Download CSV), the Dashboard tab. | The console, the ledger, promotion with no seller action, the team desk, the CSV, the dashboard. |
-| 6 | 1:43 to 2:00 | Test-build screenshots: create account, the three-step wizard, the share kit (English and Hinglish text, QR PNG, rehearse link), the staff invite. | Password account with no email step, three short steps, the share kit, staff invite link. |
-| 7 | 2:00 to 2:14 | Production seller Club tab and buyer club page of the demo shop (0 members), then test-run screenshots of a post reaching a member; "213 ms"; "No real club members yet." | A club per shop on a Nexconn community channel: #drops, #chat, #reviews; median delivery 213 ms in our test. |
-| 8 | 2:14 to 2:33 | Drawn funnel of 300 dots into 2 units, result tiles, then "8 of 8 database invariants passed" and the two winning-tap times. | The synthetic load test on production. |
-| 9 | 2:33 to 2:45 | The real `/how-it-works` feature map, camera moving card to card, a checklist of seven Nexconn features. | Everything live runs on Nexconn, now with a community channel for the club. |
-| 10 | 2:45 to 2:57 | End card: "Dibs! First tap wins", `tapdibs.vercel.app/try`, Nexconn App Key `qd46yzrfq1obf`, repository, team, and "No real drop has run yet. Demo rooms use labelled 🤖 bots." | Try it yourself in sixty seconds. |
+| 3 | 0:25 to 1:08 | Production `/try` → Be a buyer: 40 🤖 bots, piece 1, "#3 on the waitlist", the ticker, bot holds expiring after 12 s, "It's yours" 23 s after the tap, the order room, the demo payment card, I've paid, "Paid · confirmed by Asha (demo staff)". | The judge demo; bots never pay; the queue moves; Dibs never touches the money. |
+| 4 | 1:08 to 1:16 | Production room chat: a UPI ID is refused before sending. | The scam shield. |
+| 5 | 1:16 to 1:52 | **One drop, both sides.** Priya's phone (iPhone 15 profile) left, the seller console (1280×800) right, one clock. Drop next → the piece on her phone within a second → Rohan (off screen) taps first, the ledger shows his hold → Priya taps: "You're #1 on the waitlist" on her phone and in the ledger → the seller cancels Rohan's hold from the ledger → "It's yours" on her phone and "from waitlist" in the ledger → her order room with the shop's UPI pay card (`test@upi`) → I've paid → the Team desk shows "Says paid" → Payment received → "Paid · confirmed by Meera (test)" → Mark shipped → "Shipped · On its way to you." A step strip (1 Seller drops · 2 Priya taps · 3 Waitlist · 4 Promoted · 5 Paid · 6 Confirmed · 7 Shipped) lights as the footage reaches each step; an arrow in the gap marks each cause and a spark marks where it lands. Tag: "Real drop on production · test shop and test buyers · 20 Nov 2026". | One real drop from both sides; within a second; Rohan holds, Priya #1 on the waitlist; cancelled and promoted on the spot; the UPI card, a test ID; says paid, received, confirmed; shipped. |
+| 6 | 1:52 to 2:08 | Test-build screenshots: create account, the three-step wizard, the share kit, the staff invite. | Password account with no email step, three short steps, the share kit. |
+| 7 | 2:08 to 2:22 | Production seller Club tab and buyer club page of the demo shop, then test-run screenshots of a post reaching a member; "213 ms"; "No real club members yet." | A club per shop on a Nexconn community channel; median delivery 213 ms in our test. |
+| 8 | 2:22 to 2:37 | **Four phones, one piece.** Phone 1 · Priya · iPhone 15, Phone 2 · Rohan · Pixel 7, Phone 3 · Aisha · iPhone 15, Phone 4 · Kabir · Pixel 7. The seller drops a piece with 2 units; it lands on all four; the taps play in slow motion (tagged); Kabir and Aisha get "You got it!" with hold timers, Rohan "#1 on the waitlist", Priya "#2"; the SOLD stamp and stock count change on all four. Result chips under each phone from the server's record; arrows chip to chip in commit order. Tag: "Test buyers on production · scripted taps · 20 Nov 2026". | Four test phones race; the server decides in one locked transaction, never by a phone's clock; Kabir and Aisha win, Rohan and Priya queue #1 and #2. |
+| 9 | 2:37 to 2:56 | Drawn funnel of 300 dots into 2 units, result tiles, "8 of 8 database invariants passed" and the two winning-tap times. | The synthetic load test on production. |
+| 10 | 2:56 to 3:08 | The real `/how-it-works` feature map, a checklist of seven Nexconn features. | Everything live runs on Nexconn. |
+| 11 | 3:08 to 3:21 | End card: `tapdibs.vercel.app/try`, Nexconn App Key `qd46yzrfq1obf`, repository, team, "No real drop has run yet. Demo rooms use labelled 🤖 bots." | Try it yourself in sixty seconds. |
 
-Dropped from the first cut to make room: the notebook beat, the "no app, no password" checklist, the piece 2 win and the moderation-log beat.
+Dropped from v5 to make room: the demo-room seller tour (Drop next, the claims ledger with 🤖 rows, the team desk, the CSV and the dashboard), and the drawn "server decides" sketch in scene 3 (its line now plays over the four phones).
 
 ## How to rebuild it
 
-Everything is in `submission/video/work/`. `build.sh` runs the whole chain (add `voice` to re-synthesise): `vo/vo.sh` (voice), `gen_footage.py` (frame index and stills), `patch.py` (first-cut page plus `mid.js` and `g.js` gives `dibs.html`), the slideshow audit, the read check, `score.py` (music), the mix and the render. The production recordings are in `work/cap2/` and were made with `rec.py`, `rec2.py`, `rec3.py` (the scam beat) and `full.py`, one demo room at a time.
+Everything is in `submission/video/work/`. `build.sh` runs the whole chain (add `voice` to re-synthesise): `vo/vo.sh` (voice: `mk_lines.py` writes the lines and the voice-only respellings, `assemble.py` joins them with short breaths and keeps the lines before the first changed one at their old times), `gen_footage.py` (frame index and stills), `patch.py` (first-cut page plus `mid.js` and `g.js` gives `dibs.html`), the activity audit, the read check, `score.py` (music), the mix and the render. Scenes 5 and 8 come from one run of `rec4.py` (20 Nov 2026, about 2.5 minutes): it signs a test seller up through the app's own password sign-up (no email), creates the test shop, pieces and drop, joins four test buyers, records the seller and Priya (phase A) and then all four phones and the seller (phase B) with one screenshot loop per browser on one shared clock, and deletes and verifies everything in `finally`. Its log and the server's claim rows are in `work/cap2/v_run.json`. Earlier production recordings are in `work/cap2/` (`rec.py`, `rec2.py`, `rec3.py`, `full.py`, one demo room at a time).
 
 ## Upload checklist
 
-1. Watch it once end to end with sound. Machine check done on 19 Nov 2026 (v5): two local speech models (faster-whisper small.en, base.en) transcribed the final file; "Nexconn" is heard as "Nexcon"/"next con" in all four lines, "Kaching" as "Ka Ching" (small.en) and "Cauching" (base.en), "UPI", "QR" and "CSV" are right. "Hinglish" is heard as "English" by both local models for every spelling tried (likely vocabulary, since Gemini hears "Hinglish"): listen to that word and to "Kaching".
+1. Watch it once end to end with sound, especially scenes 5 and 8 and the words "Nexconn", "Kaching", "Hinglish" and "Aisha" (voiced from the spelling "Ayesha": Kokoro read "Aisha" as AY-sha, which both local speech models heard as "Asha").
+   Machine check done on 20 Nov 2026 (v6, final file): 3:20.8, 1920×1080 30 fps H.264, AAC stereo, -14.0 LUFS, true peak -1.4 dBTP; no gap of 0.45 s or longer in the voice stem (silencedetect -35 dB) other than the end-card hold; activity audit lively (14% quiet, no quiet stretch of 1.5 s); read check 70 of 70. Two local speech models (faster-whisper small.en, base.en) transcribed the final file: small.en heard every new line of scenes 5 and 8 as written ("Aisha" as "Ayesha", the voice spelling; "never by" as "never buy"); base.en heard "Rohin" for Rohan and "Cabar and Iesha" for "Kabir and Aisha". "Nexconn" is heard as "Nexcon"/"NextCon", "Kaching" as "Ka Ching" (small.en) and "Cau Ching" (base.en); small.en now hears "Hinglish", base.en still "English".
 2. Upload to YouTube as Unlisted (or Loom or Vimeo), anyone with the link, test it in a private window, paste the link into the form.

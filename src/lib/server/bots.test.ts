@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chooseKeep, leaveOffsets, planTaps, servedAt } from "./bots.ts";
+import { SCRIPT, chooseKeep, itemPlan, leaveOffsets, planTaps, servedAt } from "./bots.ts";
 
 const JHUMKA = [{ key: "gold", qty: 1 }, { key: "silver", qty: 1 }, { key: "rose", qty: 2 }];
 
@@ -23,6 +23,18 @@ test("piece 2: every variant keeps a unit for the first 10 s", () => {
     const t = planTaps("buyer", 2, vs);
     for (const v of vs) assert.ok(t.filter((x) => x.variant === v.key && x.ms < 10_000).length <= v.qty - 1, v.key);
   }
+});
+
+test("buyer script: piece 2 is the last; it carries the demo's end, and no piece after it drops", () => {
+  const bots = Array.from({ length: 40 }, (_, i) => ({ id: `b${i}`, uid: `demo_bot_${i}`, name: `Bot ${i}` }));
+  const item = (position: number) => ({ id: `i${position}`, position, variants: [{ key: "green", qty: 2 }, { key: "red", qty: 2 }] });
+  const p2 = itemPlan({ role: "buyer" }, item(2), bots);
+  assert.deepEqual(p2.filter((r) => r.action !== "tap"), [{ ms: SCRIPT.lastEndMs, action: "end", payload: {} }]);
+  assert.ok(Math.max(...p2.filter((r) => r.action === "tap").map((r) => r.ms)) < SCRIPT.lastEndMs, "every bot tap lands before the end");
+  assert.deepEqual(itemPlan({ role: "buyer" }, item(1), bots).filter((r) => r.action !== "tap"), [], "piece 1: piece 2 waits for the judge");
+  assert.deepEqual(planTaps("buyer", 3, item(3).variants), []);
+  const seller = itemPlan({ role: "seller" }, item(2), bots);
+  assert.ok(seller.every((r) => r.action === "tap") && seller.length === 8, "the seller demo is unchanged: taps only, the judge drops and ends");
 });
 
 test("seller: 3 fast taps, 5 more over 1-6 s", () => {

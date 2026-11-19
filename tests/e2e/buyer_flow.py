@@ -4,7 +4,7 @@ Run:  ~/.claude/brag-scaled-venv/bin/python tests/e2e/buyer_flow.py            (
       ... buyer_flow.py judge     only the /try judge path
 
 Scenarios: two buyers race for one unit; winner pays, staff confirms; release -> promotion; room chat; offline -> Reconnecting
--> back; not-found pages; /me; judge path /try -> "It's yours!". Screenshots go to .shots/buyer/. Every page is checked for
+-> back; not-found pages; /me; judge path /try -> "It's yours!" -> pay -> win piece 2 -> the end card. Screenshots go to .shots/buyer3/. Every page is checked for
 console errors and horizontal overflow (against the configured 360 px, not innerWidth, which mobile emulation widens).
 The test shop is a normal (non-sandbox) shop, deleted with its buyers at the end (finally block).
 """
@@ -28,6 +28,7 @@ W, H = 360, 640
 # Room cards normally land in about a second. On the shared dev DB another drainer (the deployed app's cron) can claim a
 # mock-mode outbox row first, so the card never reaches the local bus and the room catches up through its 30 s HTTP poll.
 CARD_WAIT = 40_000
+WON = re.compile(r"You got it( in \d+\.\d s)?! Pay within")  # the status line carries the tap time when the claim answer has it
 expect.set_options(timeout=15_000)  # the shared dev server is slow under other builders' load; mutations took > 5 s at times
 PHONE = dict(viewport={"width": W, "height": H}, is_mobile=True, has_touch=True, device_scale_factor=1,
              user_agent="Mozilla/5.0 (Linux; Android 13; Pixel 6a) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36")
@@ -65,7 +66,10 @@ def watch(page: Page, who: str) -> Page:
             return
         errors.append(f"[{who}] console: {m.text} ({url})")
     page.on("console", on_console)
-    page.on("pageerror", lambda e: errors.append(f"[{who}] pageerror: {e}"))
+    def on_error(e):  # printed in step order too, so the step that caused it shows in the log
+        errors.append(f"[{who}] pageerror at {page.url}: {e}")
+        print(f"PAGEERROR [{who}] {page.url}: {e}", flush=True)
+    page.on("pageerror", on_error)
     return page
 
 
@@ -141,6 +145,12 @@ async def in_view(page: Page, loc, name: str) -> None:
     box = await loc.bounding_box()
     vh = page.viewport_size["height"]
     check(f"in view without scrolling: {name}", box is not None and box["y"] >= 0 and box["y"] + box["height"] <= vh + 1, json.dumps(box))
+
+
+def shown(page: Page, text: str):
+    """Text on screen, not its copy in a screen-reader-only status (the order room repeats state changes in one; Playwright
+    counts that 1 px element as visible, so a plain get_by_text matches twice)."""
+    return page.get_by_text(text).and_(page.locator(":not(.sr-only)"))
 
 
 async def dibs_button(page: Page):
@@ -247,14 +257,14 @@ async def buyer_scenarios(p, browser):
             await in_view(ep, ep.locator("button", has_text="Dibs!"), f"Dibs! at {name}")
             await extra.close()
         await asyncio.gather((await dibs_button(a)).click(), (await dibs_button(b)).click())
-        won_a = a.locator("#dibs-status").get_by_text("You got it! Pay within")
-        won_b = b.locator("#dibs-status").get_by_text("You got it! Pay within")
+        won_a = a.locator("#dibs-status").get_by_text(WON)
+        won_b = b.locator("#dibs-status").get_by_text(WON)
         for _ in range(200):  # a claim took up to 8 s on the shared server
             if await won_a.is_visible() or await won_b.is_visible():
                 break
             await asyncio.sleep(0.1)
         winner, loser = (a, b) if await won_a.is_visible() else (b, a)
-        await expect(loser.locator("#dibs-status").get_by_text("You're #1 on the waitlist. We'll tell you the moment it's yours.")).to_be_visible(timeout=20000)
+        await expect(loser.locator("#dibs-status").get_by_text(re.compile(r"You're #1 on the waitlist\. Next hold ends in \d\d:\d\d"))).to_be_visible(timeout=20000)
         check("race: one winner, one waitlisted", True, "winner=" + ("A" if winner is a else "B"))
         focus = await loser.evaluate("document.activeElement && document.activeElement.textContent")
         check("focus stays on Dibs! after a tap", "Dibs!" in (focus or ""), repr(focus))
@@ -270,7 +280,7 @@ async def buyer_scenarios(p, browser):
         await winner.get_by_role("link", name="Open order chat to pay").click()
         await winner.wait_for_url("**/o/*", timeout=10000)
         order_id = winner.url.rsplit("/", 1)[1]
-        await expect(winner.get_by_text("Pay ₹1,450 to Meera Jewels (meera@upi). Pay only here, never to a number in chat.")).to_be_visible()
+        await expect(shown(winner, "Pay ₹1,450 to Meera Jewels (meera@upi). Pay only here, never to a number in chat.")).to_be_visible()
         await expect(winner.get_by_role("link", name="Pay ₹1,450 with UPI")).to_be_visible()  # phone: UPI app button
         await winner.evaluate("scrollTo(0, 0)")
         await in_view(winner, winner.get_by_role("button", name="I've paid"), "I've paid at 360x640")
@@ -284,8 +294,8 @@ async def buyer_scenarios(p, browser):
         await lap.close()
         await winner.get_by_label("UTR number (optional)").fill("123456789012")
         await winner.get_by_role("button", name="I've paid").click()
-        await expect(winner.get_by_text("Payment sent. Your timer is paused")).to_be_visible()
-        await expect(winner.get_by_text("Timer paused")).to_be_visible()
+        await expect(shown(winner, "Payment sent. Your timer is paused")).to_be_visible()
+        await expect(shown(winner, "Timer paused")).to_be_visible()
         await shot(winner, "09-order-payment-claimed")
         # staff view of the same order (seller cookie)
         staff_ctx = await browser.new_context(storage_state=await s.r.storage_state(), **PHONE)
@@ -298,7 +308,7 @@ async def buyer_scenarios(p, browser):
         await sp.get_by_role("dialog").get_by_role("button", name="Yes, mark paid").click()
         await expect(sp.get_by_role("button", name="Mark shipped")).to_be_visible(timeout=CARD_WAIT)
         await staff_ctx.close()
-        await expect(winner.get_by_text("Paid · confirmed by")).to_be_visible(timeout=CARD_WAIT)
+        await expect(shown(winner, "Paid · confirmed by")).to_be_visible(timeout=CARD_WAIT)
         check("buyer sees Paid after staff confirms", True)
         await shot(winner, "11-order-paid")
 
@@ -310,7 +320,7 @@ async def buyer_scenarios(p, browser):
             await pg.get_by_role("group", name="Pick an option").get_by_role("button", name=re.compile(r"^S\s")).click()
             await ready(pg)
         await (await dibs_button(b)).click()
-        await expect(b.locator("#dibs-status").get_by_text("You got it! Pay within")).to_be_visible()
+        await expect(b.locator("#dibs-status").get_by_text(WON)).to_be_visible()
         await (await dibs_button(a)).click()
         await expect(a.locator("#dibs-status").get_by_text("You're #1 on the waitlist.")).to_be_visible()
         # nothing else is live, so B's order room opens by itself; B releases the hold from there
@@ -343,7 +353,7 @@ async def buyer_scenarios(p, browser):
         await ready(b, 15000)
         await expect(b.get_by_role("status").filter(has_text="Reconnecting…")).to_have_count(0)
         await (await dibs_button(b)).click()
-        await expect(b.locator("#dibs-status").get_by_text("You got it! Pay within")).to_be_visible()
+        await expect(b.locator("#dibs-status").get_by_text(WON)).to_be_visible()
         check("offline: Reconnecting… and Dibs disabled; online again: claim works", True)
 
         # end of drop
@@ -379,6 +389,13 @@ async def buyer_scenarios(p, browser):
 
 
 # ---------------------------------------------------------------- judge path
+GOT = re.compile(r"You got it")
+
+
+async def status_text(pg: Page) -> str:
+    return (await pg.locator("#dibs-status").inner_text()).strip()
+
+
 async def judge(browser):
     ctx = await browser.new_context(**PHONE)
     pg = watch(await ctx.new_page(), "judge")
@@ -389,9 +406,15 @@ async def judge(browser):
     await tab_to(pg, "el.textContent.includes('Be a buyer')")
     await pg.keyboard.press("Enter")
     await pg.wait_for_url("**/s/**", timeout=20000)
+    room_url = pg.url
     await expect(pg.get_by_text("Demo room · 40 🤖 demo buyers · nothing here is real money")).to_be_visible()
+    # before piece 1: a countdown to it, never "Next piece coming up…" (no piece has dropped yet)
+    first = pg.locator("#main h1").first
+    await expect(first).to_have_text(re.compile(r"^(Piece 1 drops in \d+…|Piece 1 is about to drop…|#1 .+)$"), timeout=CARD_WAIT)
+    seen = await first.inner_text()
+    check("before piece 1 the room counts down to it", "Next piece" not in seen, seen)
+    await expect(pg.get_by_test_id("room-viewers")).to_have_count(0)  # no "0 watching" under the demo banner
     await shot(pg, "21-judge-room")
-    dibs = pg.locator("button", has_text="Dibs!")
     chips = pg.get_by_role("group", name="Pick an option").locator("button")
     await expect(chips.first).to_be_visible(timeout=CARD_WAIT + 20000)
     await pg.wait_for_timeout(1200)  # let the bots' first taps land, like a person reading the card
@@ -403,11 +426,31 @@ async def judge(browser):
     results["timings"]["judge_seconds_to_piece_1"] = round(time.monotonic() - t0, 1)
     await tab_to(pg, "el.textContent.includes('Dibs!')")
     await pg.keyboard.press("Enter")
-    await expect(pg.get_by_text("on the waitlist").or_(pg.get_by_text("You got it!")).first).to_be_visible(timeout=20000)
+    await expect(pg.get_by_text("on the waitlist").or_(pg.locator("#dibs-status").get_by_text(GOT)).first).to_be_visible(timeout=20000)
     await shot(pg, "22-judge-after-tap")
-    outright = await pg.locator("#dibs-status").get_by_text("You got it!").count() > 0
+    outright = await pg.locator("#dibs-status").get_by_text(GOT).count() > 0
     results["timings"]["judge_path"] = "won outright" if outright else "waitlisted, then promoted"
-    await expect(pg.locator("#dibs-status").get_by_text("You got it!" if outright else "It's yours! The buyer ahead didn't pay.").first).to_be_visible(timeout=120000)
+    if not outright:
+        # 1440x900, same buyer, first (the promotion comes later): chips with "· N waiting" wrap, and Dibs! and its
+        # status line still fit the window
+        lap = await browser.new_context(storage_state=await ctx.storage_state(), viewport={"width": 1440, "height": 900})
+        lp = watch(await lap.new_page(), "judge-laptop")
+        await lp.goto(room_url)
+        await expect(lp.locator("#dibs-status").get_by_text("on the waitlist")).to_be_visible(timeout=CARD_WAIT)
+        rows = await lp.get_by_role("group", name="Pick an option").bounding_box()
+        results["timings"]["judge_1440_chip_rows_px"] = rows and round(rows["height"])
+        await in_view(lp, lp.locator("button", has_text="Dibs!"), "judge Dibs! at 1440x900")
+        await in_view(lp, lp.locator("#dibs-status"), "judge status line at 1440x900")
+        await shot(lp, "22c-judge-waiting-1440x900", full=False)
+        await lap.close()
+        # while the line waits, the bar shows when the next running hold ends (from my_status), not a frozen "#1"
+        await expect(pg.locator("#dibs-status").get_by_text(re.compile(r"Next hold ends in \d\d:\d\d"))).to_be_visible(timeout=15000)
+        before = await status_text(pg)
+        await pg.wait_for_timeout(2100)
+        after = await status_text(pg)
+        check("waitlist line moves on its own", before != after, f"{before!r} -> {after!r}")
+        await shot(pg, "22b-judge-waiting", full=False)
+    await expect(pg.locator("#dibs-status").get_by_text(GOT if outright else "It's yours! The buyer ahead didn't pay.").first).to_be_visible(timeout=120000)
     secs = round(time.monotonic() - t0, 1)
     results["timings"]["judge_seconds_to_its_yours"] = secs
     check("judge path reaches It's yours!", True, f"{secs} s")
@@ -424,14 +467,17 @@ async def judge(browser):
     await in_view(pg, pg.get_by_role("button", name="I've paid"), "judge I've paid at 360x640")
     await tab_to(pg, "el.textContent.includes(\"I've paid\")")
     await pg.keyboard.press("Enter")
-    await expect(pg.get_by_text("Paid · confirmed by")).to_be_visible(timeout=20000)
+    await expect(shown(pg, "Paid · confirmed by")).to_be_visible(timeout=20000)
     results["timings"]["judge_seconds_to_paid"] = round(time.monotonic() - t0, 1)
     await expect(pg.get_by_role("link", name="Back to the room for piece 2")).to_be_visible()
     await shot(pg, "25-judge-paid", full=False)
     await pg.wait_for_url("**/s/**", timeout=10000)  # auto-return after 4 s
     check("paid sandbox order returns to the room by itself", True)
+    coach = pg.get_by_test_id("coach")
+    await expect(coach).not_to_contain_text("whole loop")
     await expect(pg.get_by_role("heading", name=re.compile(r"^#2 "))).to_be_visible(timeout=60000)
-    results["timings"]["judge_seconds_to_piece_2"] = round(time.monotonic() - t0, 1)
+    t_live2 = time.monotonic()
+    results["timings"]["judge_seconds_to_piece_2"] = round(t_live2 - t0, 1)
     await pg.evaluate("scrollTo(0, 0)")
     await shot(pg, "26-judge-piece-2", full=False)
     bar = await pg.get_by_test_id("action-bar").bounding_box()
@@ -439,6 +485,45 @@ async def judge(browser):
     check("judge room at 360x640: piece title clear of the action bar, bar on screen",
           bool(bar and title) and title["y"] >= 0 and title["y"] + title["height"] <= bar["y"] and bar["y"] + bar["height"] <= H + 1,
           json.dumps({"title": title, "bar": bar}))
+    await expect(coach).to_contain_text("beat the bots")  # piece 2 is the winnable one
+
+    # piece 2: pick a size that is left, tap, win; the demo ends in the room (no order room opens by itself)
+    if await chips.count() > 1:
+        await tab_to(pg, "el.closest('[aria-label=\"Pick an option\"]') && el.textContent.includes('left')")
+        await pg.keyboard.press("Enter")
+    await ready(pg)
+    await tab_to(pg, "el.textContent.includes('Dibs!')")
+    await pg.keyboard.press("Enter")
+    won2 = pg.locator("#dibs-status").get_by_text(re.compile(r"^You got it in \d+\.\d s! You beat the bots\.$"))
+    await expect(won2).to_be_visible(timeout=20000)
+    t_win = time.monotonic()
+    results["timings"]["judge_piece_2_win_after_drop_s"] = round(t_win - t_live2, 1)
+    results["timings"]["judge_seconds_to_piece_2_win"] = round(time.monotonic() - t0, 1)
+    await in_view(pg, won2, "piece-2 win with its tap time, in the bar at 360x640")
+    await expect(coach).to_contain_text("Clean win! You beat the bots on this one.")
+    await shot(pg, "27-judge-piece-2-won", full=False)
+    end = pg.get_by_test_id("demo-end")
+    await expect(end).to_be_visible(timeout=20000)
+    results["timings"]["judge_end_after_win_s"] = round(time.monotonic() - t_win, 1)
+    results["timings"]["judge_seconds_to_end"] = round(time.monotonic() - t0, 1)
+    check("demo ends in the room after the piece-2 win (no order room)", "/s/" in pg.url, pg.url)
+    facts = await end.get_by_role("list", name="Your demo").inner_text()
+    check("end card shows the judge's own times", "Piece 2: won " in facts and ("Piece 1: waitlisted" in facts or "Piece 1: won " in facts), facts)
+    for name in ("Be the seller", "Pay for #2 (optional)", "How it works"):
+        await expect(end.get_by_role("link", name=name)).to_be_visible()
+    await expect(pg.get_by_role("list", name="Sold and back in play")).to_contain_text("Sold to you")
+    await expect(pg.get_by_test_id("action-bar")).to_have_count(0)
+    await pg.evaluate("scrollTo(0, 0)")
+    await in_view(pg, end.get_by_role("link", name="Be the seller"), "end card actions at 360x640")
+    await shot(pg, "28-judge-end", full=False)
+    await shot(pg, "28b-judge-end-full")
+    # nothing more drops; the unpaid piece-2 hold (paying is optional) runs out 90 s after the win without a pink notice
+    await expect(end.get_by_role("link", name="Pay for #2 (optional)")).to_have_count(0, timeout=110_000)
+    await pg.wait_for_timeout(2500)
+    await expect(pg.get_by_text("ran out")).to_have_count(0)
+    await expect(end).to_be_visible()
+    check("after the optional hold ends, the end card is still the last thing on screen", "/s/" in pg.url, pg.url)
+    await shot(pg, "29-judge-end-after-hold", full=False)
     await ctx.close()
 
 

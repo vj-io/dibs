@@ -25,9 +25,11 @@ export function whoIs(l: ChatLine, meId: string | null): Who {
 }
 
 export function Chat({
-  title = "Chat", lines, meId, onSend, readOnly, disabledReason, note, receipts, collapsible, defaultOpen = true, empty, className, maxHeight = "max-h-80",
+  title = "Chat", sub, lines, meId, onSend, readOnly, disabledReason, note, receipts, collapsible, defaultOpen = true, empty, className, maxHeight = "max-h-80",
 }: {
   title?: ReactNode;
+  /** A quiet note beside the title (e.g. what carries this chat). Not shown on a collapsible chat. */
+  sub?: ReactNode;
   lines: ChatLine[];
   meId: string | null;
   /** Rejects with an Error whose message is shown under the input. */
@@ -79,8 +81,8 @@ export function Chat({
   const locked = !!disabledReason;
   return (
     <section className={cx("rounded-wobble-2 border-[2.5px] border-ink bg-card shadow-ink-sm", className)} aria-label={typeof title === "string" ? title : "Chat"}>
-      <h2 className="text-lg">
-        {collapsible ? (
+      {collapsible ? (
+        <h2 className="text-lg">
           <button type="button" aria-expanded={open} aria-controls={panelId} onClick={() => setOpen((o) => !o)}
             className="flex min-h-12 w-full items-center gap-2 px-4 text-left font-extrabold">
             <Icon name="chat" size={20} />
@@ -89,10 +91,13 @@ export function Chat({
             <Icon name={open ? "chevronUp" : "chevronDown"} size={20} />
             <span className="sr-only">{open ? "Hide chat" : "Show chat"}</span>
           </button>
-        ) : (
-          <span className="flex min-h-12 items-center gap-2 px-4 font-extrabold"><Icon name="chat" size={20} />{title}</span>
-        )}
-      </h2>
+        </h2>
+      ) : (
+        <div className="flex flex-wrap items-center gap-x-3 px-4">
+          <h2 className="text-lg"><span className="flex min-h-12 items-center gap-2 font-extrabold"><Icon name="chat" size={20} />{title}</span></h2>
+          {sub && <p className="-mt-1.5 flex items-center gap-1 pb-2 font-hand text-base leading-tight text-muted sm:ml-auto sm:mt-0 sm:pb-0"><Icon name="lock" size={14} />{sub}</p>}
+        </div>
+      )}
       <div id={panelId} hidden={!open} className="border-t-2 border-ink/15">
         <ol ref={list} aria-label="Messages"
           onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40; }}

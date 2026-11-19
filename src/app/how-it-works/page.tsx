@@ -69,6 +69,20 @@ export default function HowItWorks() {
             The database decides who was first. Nexconn tells the room. Below: the path of one tap, why it is fair, and every Nexconn feature we use,
             with its status on this deployment right now.
           </p>
+          <Card flat tint="lime" className="mt-5 max-w-3xl p-4">
+            <p className="font-extrabold">Nexconn in one look</p>
+            <ul className="mt-2 grid gap-1 sm:grid-cols-2">
+              <li><strong>Open channel:</strong> the live sale room.</li>
+              <li><strong>Group channels:</strong> private order chats, plus the team desk.</li>
+              <li><strong>System channel:</strong> personal alerts (promoted, paid, shipped).</li>
+              <li><strong>Community channel:</strong> the shop club.</li>
+              <li><strong>Webhook and message delete:</strong> typed-claim helper, scam shield.</li>
+              <li><strong>Custom <code>DB:*</code> cards from <code>dibs_bot</code>:</strong> sold, stock, pay, status.</li>
+            </ul>
+            <a href="#features" className="mt-2 inline-flex min-h-12 items-center gap-1.5 font-bold underline decoration-2 hover:decoration-pink">
+              Jump to the full feature map with live status <Icon name="arrowRight" size={18} />
+            </a>
+          </Card>
           <nav aria-label="On this page" className="mt-4 flex flex-wrap gap-x-1">
             {[["tap", "One tap"], ["fair", "Why it's fair"], ["features", "Nexconn features"], ["transport", "Transport now"], ["bots", "Demo bots"], ["ai", "AI"]].map(([id, t]) => (
               <a key={id} href={`#${id}`} className="inline-flex min-h-12 items-center px-2 font-semibold underline decoration-2 hover:decoration-lime">{t}</a>

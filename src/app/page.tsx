@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ForSellers } from "@/components/info/ForSellers";
 import {
   AppHeader, Arrow, Avatar, Button, Card, Chip, Footer, Highlight, Icon, LinkButton, PhoneFrame,
   PhotoCarousel, Price, Scribble, Squiggle, Stamp, StatePill, Ticker, type IconName, type StampWord, type TickerCard,
@@ -38,7 +39,7 @@ function SaleRoomMock() {
       <div className="demo-win relative flex items-center gap-2 rounded-wobble border-[2.5px] border-ink bg-lime px-3 py-2.5 shadow-ink-sm">
         <Icon name="check" size={22} stroke={3} />
         <p className="flex-1 font-extrabold leading-tight">You got it! Pay within <span className="font-mono">10:00</span></p>
-        <Stamp word="YOURS" size="sm" tilt={8} className="absolute -right-1 -top-4" />
+        <Stamp word="YOURS" size="sm" tilt={8} className="absolute -top-5 right-3" />
       </div>
       <Ticker lines={[{ id: "a", card: sold }, { id: "b", card: back }]} />
     </div>
@@ -95,7 +96,11 @@ export default function Home() {
               <LinkButton href="/try" variant="primary" size="lg" icon="tap">Try the live demo</LinkButton>
               <LinkButton href="/seller" variant="ghost" size="lg">I&apos;m a seller</LinkButton>
             </div>
-            <p className="mt-4 flex items-center gap-2 text-[0.95rem] text-muted">
+            <p className="mt-4 max-w-lg text-[0.95rem]">
+              <strong>Runs live on <span className="rounded bg-lime px-1">Nexconn</span>:</strong> open-channel sale room, private group-channel order chats, system-channel alerts.{" "}
+              <Link href="/how-it-works" className="whitespace-nowrap font-bold underline decoration-2 hover:decoration-lime">How it works →</Link>
+            </p>
+            <p className="mt-2 flex items-center gap-2 text-[0.95rem] text-muted">
               <Icon name="robot" size={18} className="text-violet-ink" />
               The demo fills a sandbox room with labelled 🤖 demo buyers. No real money.
             </p>
@@ -190,6 +195,11 @@ export default function Home() {
               </div>
             </Card>
           </div>
+        </section>
+
+        {/* For sellers */}
+        <section aria-labelledby="sellers" className="mx-auto max-w-6xl px-4 pt-10">
+          <ForSellers />
         </section>
 
         {/* Built on Nexconn */}
