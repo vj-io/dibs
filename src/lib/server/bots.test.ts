@@ -11,17 +11,17 @@ test("piece 1: ten bot taps within 80-400 ms, each variant sold with 2 bots wait
   for (const v of JHUMKA) assert.equal(t.filter((x) => x.variant === v.key).length, v.qty + 2);
 });
 
-test("piece 2: first bot per variant at 1.5-3 s leaves a unit, the rest come after 6 s", () => {
+test("piece 2: first bot per variant at 1.5-3 s leaves a unit, the rest come after 10 s", () => {
   const t = planTaps("buyer", 2, [{ key: "green", qty: 2 }, { key: "red", qty: 2 }]);
-  assert.ok(t.filter((x) => x.ms < 6000).every((x) => x.ms >= 1500 && x.ms <= 3000));
-  assert.equal(t.filter((x) => x.ms < 6000).length, 2);
+  assert.ok(t.filter((x) => x.ms < 10_000).every((x) => x.ms >= 1500 && x.ms <= 3000));
+  assert.equal(t.filter((x) => x.ms < 10_000).length, 2);
 });
 
-test("piece 2: every variant keeps a unit for the first 6 s", () => {
+test("piece 2: every variant keeps a unit for the first 10 s", () => {
   for (let n = 0; n < 50; n++) {
     const vs = [{ key: "a", qty: 1 }, { key: "b", qty: 2 }, { key: "c", qty: 3 }];
     const t = planTaps("buyer", 2, vs);
-    for (const v of vs) assert.ok(t.filter((x) => x.variant === v.key && x.ms < 6000).length <= v.qty - 1, v.key);
+    for (const v of vs) assert.ok(t.filter((x) => x.variant === v.key && x.ms < 10_000).length <= v.qty - 1, v.key);
   }
 });
 

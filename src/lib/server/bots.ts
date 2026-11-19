@@ -48,8 +48,10 @@ export function planTaps(role: Slot["role"], position: number, variants: Item["v
   } else if (position === 1) {
     for (const v of variants) add(v.key, v.qty + 2, 80, 400);        // every variant: sold, then 2 bots waiting (judge is #3)
   } else if (position === 2) {
-    // every variant keeps at least one unit for the first 6 s, so whichever the judge picks is winnable
-    for (const v of variants) { add(v.key, Math.min(1, v.qty - 1), 1500, 3000); add(v.key, v.qty, 6000, 9000); }
+    // every variant keeps at least one unit for the first 10 s, so whichever the judge picks is winnable. 6 s was too
+    // short for a person: back from the order room, the page loads and the card is read before the tap (an iPhone
+    // Safari run on 20 Nov 2026 missed it; scripted browsers tap within 1 s and never noticed)
+    for (const v of variants) { add(v.key, Math.min(1, v.qty - 1), 1500, 3000); add(v.key, v.qty, 10_000, 13_000); }
   } else {
     for (const v of variants) add(v.key, v.qty + 1, 300, 5000);
   }
