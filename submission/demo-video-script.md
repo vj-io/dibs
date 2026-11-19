@@ -51,5 +51,5 @@ Everything is in `submission/video/work/`. `build.sh` runs the whole chain (add 
 
 ## Upload checklist
 
-1. Watch it once end to end with sound, checking the pronunciation of "UPI", "QR", "CSV" and "Kaching".
+1. Watch it once end to end with sound. Machine check done on 19 Nov 2026 (v5): two local speech models (faster-whisper small.en, base.en) transcribed the final file; "Nexconn" is heard as "Nexcon"/"next con" in all four lines, "Kaching" as "Ka Ching" (small.en) and "Cauching" (base.en), "UPI", "QR" and "CSV" are right. "Hinglish" is heard as "English" by both local models for every spelling tried (likely vocabulary, since Gemini hears "Hinglish"): listen to that word and to "Kaching".
 2. Upload to YouTube as Unlisted (or Loom or Vimeo), anyone with the link, test it in a private window, paste the link into the form.
