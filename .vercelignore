@@ -1,4 +1,10 @@
 .shots
 tests
 docs/PRD.md
+docs/research-crowdplay-judging.md
 .env*
+submission
+scripts/nexconn-poc*
+node_modules
+.next
+.git
