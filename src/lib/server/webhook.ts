@@ -5,7 +5,7 @@ import { isQuestion } from "../ai/answer-bot.ts";
 import { promptText } from "../ai/claim-helper.ts";
 import * as jobs from "../ai/jobs.ts";
 import { setAiRecorder } from "../ai/model.ts";
-import { scamRules } from "../ai/scam-shield.ts";
+import { BLOCKED_TEXT, scamRules } from "../ai/scam-shield.ts";
 import { ASSISTANT_ID, BOT_ID, type Card } from "../codec.ts";
 import { screenClubText } from "./club.ts";
 import { sql } from "./db.ts";
@@ -19,7 +19,7 @@ setAiRecorder((r) => {
 });
 
 /** PRD Key copy, "Scam block (to sender)". */
-export const BLOCKED_TEXT = "Phone numbers and UPI IDs can't be shared in the sale room. Use your order chat.";
+export { BLOCKED_TEXT };
 
 export type RoomText = { channelId: string; fromUserId: string; messageId: string; text: string; sentAt?: number };
 export type TextDeps = {

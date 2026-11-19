@@ -12,6 +12,7 @@ import { applyCard, forOtherDrop, mergeState, tickerKey } from "@/lib/client/sal
 import { useNow, useOnline, useSlow, useTryTick, withTimeout } from "@/lib/client/hooks";
 import { coachLine } from "@/lib/client/coach";
 import { reportTap } from "@/lib/client/tap-metric";
+import { BLOCKED_TEXT, scamRules } from "@/lib/ai/scam-shield";
 import { displayName, tapTime, type Card } from "@/lib/codec";
 import type { ClaimResult, DropState, MyStatus, PublicConfig } from "@/lib/types";
 import {
@@ -319,6 +320,13 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
   async function sendChat(text: string) {
     const lv = liveRef.current;
     if (!lv || !state) throw new Error("Reconnecting… try again in a moment.");
+    // Same rules as the server's scam shield, checked before sending, so a refused message never reaches the room even
+    // if the Nexconn webhook is late (one production check on 19 Nov 2026 saw no removal within 30 s). The webhook still
+    // screens anything sent around this app. The attempt is reported so the seller's moderation log shows it.
+    if (scamRules(text).blocked) {
+      void api("POST /api/drops/:id/blocked", { text }, { id: state.dropId }).catch(() => {});
+      throw new Error(BLOCKED_TEXT);
+    }
     try {
       const m = await lv.sendText({ type: "room", id: state.channelId }, text);
       setChat((xs) => (xs.some((x) => x.id === m.id) ? xs : [...xs, { id: m.id, from: m.from, fromName: m.fromName, at: m.at, text }]));

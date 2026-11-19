@@ -2,6 +2,8 @@
 // Blocks contact and payment details in the public sale room; never blocks prices, item numbers or sizes.
 
 export type ScamRule = "phone" | "upi" | "pay_link" | "pay_request";
+/** What a buyer sees when a message is refused or removed. */
+export const BLOCKED_TEXT = "Phone numbers and UPI IDs can't be shared in the sale room. Use your order chat.";
 
 const HANDLES = [
   "ybl", "okaxis", "okhdfcbank", "okicici", "oksbi", "paytm", "upi", "ibl", "axl", "apl", "axisbank", "sbi", "icici",
