@@ -1,8 +1,8 @@
-# Dibs: demo video script (v2, 2:57, narrated)
+# Dibs: demo video script (v3, 2:57, narrated)
 
 Team **Kaching** · Vaibhav Jangid · Nexconn Build Challenge 2026 · Track: Marketplace & Support
 
-This is the plan the current cut follows: `submission/video/dibs-demo.mp4`. The first cut (2:34) is kept as `submission/video/dibs-demo-v1.mp4`. The exact spoken lines with their times are in `submission/video/narration.txt`.
+This is the plan the current cut follows: `submission/video/dibs-demo.mp4`. Earlier cuts are kept: `dibs-demo-v1.mp4` (2:34) and `dibs-demo-v2.mp4` (the same as this one except the scam-shield scene, recorded before the app began refusing such messages before sending). The exact spoken lines with their times are in `submission/video/narration.txt`.
 
 Style: documentary voiceover, one continuous track with no pauses (no gap of 0.45 s or longer in the voice), fast, animation on every beat, doodle look (paper, ink, lime, hot pink). 31 lines, 560 words. Captions for every line are burned in.
 
@@ -13,7 +13,7 @@ Style: documentary voiceover, one continuous track with no pauses (no gap of 0.4
 - Every bot is labelled 🤖 on screen and the app's own banner "Demo room · 40 🤖 demo buyers · nothing here is real money" stays in the demo cuts. The payment card shown is the demo one ("Demo shop: nothing to pay", with "Pay with UPI (demo)" switched off).
 - Footage that is sped up, slowed or paused says so in a tag under the screen.
 - No real drop has run and the club has no real members. The end card and the club scene say so. No real users, sales or money are shown or implied.
-- Not claimed anywhere: video calling, a Hindi interface, or blocking a message before delivery. The scam scene says the message is deleted just after delivery, because pre-message blocking is not on our Nexconn plan.
+- Not claimed anywhere: video calling, a Hindi interface, or blocking a message before delivery. The scam scene shows the app refusing the message before it is sent, and notes that the server also removes anything sent around the app.
 
 ## Numbers used, and where each comes from
 
@@ -35,7 +35,7 @@ The first cut's "about 0.4 seconds" card latency line is removed.
 | 1 | 0:00 to 0:12 | Drawn group chat flooding with "booked!!", captioned "illustration · not a real chat". | Sellers run drops in group chats; two people say booked; nobody can prove who was first. |
 | 2 | 0:12 to 0:25 | Title, then the real seller console and a real buyer phone at the moment of Drop next. | This is Dibs. First tap wins. Built on the Nexconn Chat SDK. |
 | 3 | 0:25 to 1:13 | Production `/try` → Be a buyer. 40 🤖 bots, piece 1 drops, "#3 on the waitlist", the ticker, the server-decides sketch, bot holds expiring after 12 s, "It's yours" 23 s after the tap, the order room, the demo payment card, I've paid, "Paid · confirmed by Asha (demo staff)". | The judge demo; the server decides in one locked transaction; bots never pay; the queue moves; Dibs never touches the money; the demo has nothing to pay. |
-| 4 | 1:13 to 1:22 | Production room chat: a UPI ID is posted and deleted, the notice appears. | The scam shield removes it for everyone within seconds. |
+| 4 | 1:13 to 1:22 | Production room chat: a UPI ID is typed and Send is pressed; it never appears in the room, and the red line under the box says to use the order chat. Stamp: "refused before sending". | The scam shield refuses it before it reaches the room. |
 | 5 | 1:22 to 1:43 | Production `/try` → Be the seller: Drop next, the claims ledger with 🤖 Demo buyer pills and "🤖 demo payment", a hold expiring and "from waitlist", the Desk tab (mark paid, mark shipped, Download CSV), the Dashboard tab. | The console, the ledger, promotion with no seller action, the team desk, the CSV, the dashboard. |
 | 6 | 1:43 to 2:00 | Test-build screenshots: create account, the three-step wizard, the share kit (English and Hinglish text, QR PNG, rehearse link), the staff invite. | Password account with no email step, three short steps, the share kit, staff invite link. |
 | 7 | 2:00 to 2:14 | Production seller Club tab and buyer club page of the demo shop (0 members), then test-run screenshots of a post reaching a member; "213 ms"; "No real club members yet." | A club per shop on a Nexconn community channel: #drops, #chat, #reviews; median delivery 213 ms in our test. |
@@ -47,7 +47,7 @@ Dropped from the first cut to make room: the notebook beat, the "no app, no pass
 
 ## How to rebuild it
 
-Everything is in `submission/video/work/`. `build.sh` runs the whole chain (add `voice` to re-synthesise): `vo/vo.sh` (voice), `gen_footage.py` (frame index and stills), `patch.py` (first-cut page plus `mid.js` and `g.js` gives `dibs.html`), the slideshow audit, the read check, `score.py` (music), the mix and the render. The production recordings are in `work/cap2/` and were made with `rec.py`, `rec2.py` and `full.py`, one demo room at a time.
+Everything is in `submission/video/work/`. `build.sh` runs the whole chain (add `voice` to re-synthesise): `vo/vo.sh` (voice), `gen_footage.py` (frame index and stills), `patch.py` (first-cut page plus `mid.js` and `g.js` gives `dibs.html`), the slideshow audit, the read check, `score.py` (music), the mix and the render. The production recordings are in `work/cap2/` and were made with `rec.py`, `rec2.py`, `rec3.py` (the scam beat) and `full.py`, one demo room at a time.
 
 ## Upload checklist
 
