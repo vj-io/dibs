@@ -32,7 +32,7 @@ const MEASURED: { what: string; value: string; note: string }[] = [
 ];
 
 const NOT_VERIFIED = [
-  "The pre-message callback is not available on our Nexconn plan (the option is greyed out in the Console), so the scam shield removes a message after delivery instead of before it.",
+  "The pre-message callback is not available on our Nexconn plan (the option is greyed out in the Console), so a message sent around the app is removed after delivery. The app itself refuses a phone number or UPI id before sending.",
   "The Call SDK has not been tested.",
   "Participant joined and banned events never fired in our runs, so the viewer count is read from the server instead.",
   "Latency from phones on 4G, more than two simultaneous clients, and behaviour at the plan's connection limit are not measured.",

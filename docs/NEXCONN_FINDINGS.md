@@ -86,7 +86,7 @@ EnsureRoom, DB:State (+ metadata mirror), RoomMeta, Mute, Unban, EnsureGroup, DB
 
 - `/v4/group-channel/create` answers `{"code":22413}` when the owner is already in 1,000 group channels. The code is not in the public status-code list. `/v4/group-channel/joined/list` for `dibs_bot` returned exactly 1,000 groups at that moment; a create with a fresh owner returned `0` in the same minute.
 - Cause on our side: `dibs_bot` was owner and member of every order room, and test and demo runs never dismissed theirs.
-- Fix: the buyer owns the order room and the bot sends as a non-member (the Server API allows it). Checked in a production browser: `DB:Order` and `DB:Pay` frames arrived over the socket in a room the bot is not in. Deleted orders and shops queue their group for `/v4/group-channel/dismiss` (cron sweep). 992 orphan groups were dismissed.
+- Fix: each order room is owned by an id made for it (`own_<room>`) that is never issued a token, so no browser holds owner rights, and the bot sends as a non-member (the Server API allows it). Checked in a production browser: `DB:Order` and `DB:Pay` frames arrived over the socket in a room the bot is not in. Deleted orders and shops queue their group for `/v4/group-channel/dismiss` (cron sweep). 992 orphan groups were dismissed.
 - Dismissing a group that does not exist answers `25410`; treated as done.
 - Still a ceiling: a staff member is in every order room of the shop, so 1,000 undeleted order rooms per staff member. Rooms of long-finished orders are not dismissed yet.
 

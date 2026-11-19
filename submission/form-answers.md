@@ -58,7 +58,7 @@ Chat SDK for Web (@nexconn/chat 26.2.1 + @nexconn/engine). Browser: NCEngine.ini
 
 Server API (signed with App-Key, Nonce, Timestamp, Signature): /v4/auth/access-token/issue, /v4/open-channel/create and destroy, /v4/open-channel/message/send with priority, /v4/open-channel/metadata/batch/set, open-channel participant mute-list and ban-list add and remove, /v4/message/delete (the scam shield removes a message for everyone), /v4/user/connection-status/get (route orders to online staff), group-channel create and join, /v4/direct-channel/message/send and /v4/system-channel/message/send. The message:send webhook is set in the Console and works on production (scam shield, answer bot, typed-claim prompts); signature, timestamp, nonce and message id are checked. The pre-message callback is not available on our plan, so the scam shield removes a message after delivery.
 
-Measured live on the Singapore data center on 19 Nov 2026 (one machine in India): server to browser card median 436 ms (n=20). Limits found on production: a user can be in at most 1,000 group channels (code 22413, so the buyer owns the order room and the cron sweep dismisses groups of deleted orders), and code 1008 is a 20 messages per second rate limit (the outbox retries). Details in docs/NEXCONN_FINDINGS.md.
+Measured live on the Singapore data center on 19 Nov 2026 (one machine in India): server to browser card median 436 ms (n=20). Limits found on production: a user can be in at most 1,000 group channels (code 22413, so each order room has its own owner id that nobody can sign in as and the cron sweep dismisses groups of deleted orders), and code 1008 is a 20 messages per second rate limit (the outbox retries). Details in docs/NEXCONN_FINDINGS.md.
 ```
 
 ## 03 Links

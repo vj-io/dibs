@@ -41,7 +41,7 @@ Everything live runs on Nexconn. The database decides; Nexconn carries what peop
 | Custom `DB:*` messages from `dibs_bot` | Item, sold, back, stock, order, pay, status cards | Proven live | Server to browser median 436 ms, n=20 (min 377, max 2093) |
 | Message priority | Sold and stock cards ahead of chat | Proven live | Accepted (code 0); effect on order not measured |
 | Open-channel metadata | Mirror of state, as a hint only | Proven live | 99 to 155 ms; any client can overwrite it, so it is never trusted |
-| Group channels | One order room per winner (the buyer owns it; the bot sends as a non-member); one team desk per shop | Proven live | Create 189 ms; send 87 to 125 ms |
+| Group channels | One order room per winner (owned by an id nobody can sign in as; the bot sends as a non-member); one team desk per shop | Proven live | Create 189 ms; send 87 to 125 ms |
 | Read receipts | "Seen" on order-room messages | Proven live | Receipt came back read 1 of 2 |
 | System channel | Personal alerts (promoted, expiring, paid) | Proven live (flag on) | 86 ms |
 | Mute and ban lists | Seller moderation, enforced by Nexconn | Proven live | Mute 87 ms (send fails 23408); ban 116 ms (23409) |
@@ -49,12 +49,12 @@ Everything live runs on Nexconn. The database decides; Nexconn carries what peop
 | Online status | Route orders to staff who are online | Proven live | 128 ms |
 | Community channel | Shop club with #drops, #chat, #reviews | Proven live 19 Nov 2026; on in production | 14/14 browser checks; bot to member delivery 10/10, median 213 ms; non-members receive nothing. Production club flow: 6/6 browser steps, 0 errors |
 | `message:send` webhook | Typed-claim helper, answer bot, scam shield | Proven live on production (Console set to our URL) | Manual run: a UPI id was removed for everyone within about 5 s; the answer bot replied from the FAQ |
-| Pre-message callback | Block scams before delivery | Not available on this plan (greyed out in the Console); flag off | Scam shield removes after delivery instead |
+| Pre-message callback | Block scams before delivery | Not available on this plan (greyed out in the Console); flag off | The app refuses before sending; the webhook removes after delivery |
 | Call SDK | Video viewing | Behind flag (off) | Not tested; not built |
 
 The numbers above come from the proof of concept (`docs/NEXCONN_FINDINGS.md`), measured from one Mac in India, not from phones on 4G. Production tap latency is in section 4.
 
-Findings that cost us time and may help others: a user can be in at most 1,000 group channels (code 22413); `dibs_bot` hit it because it owned every order room, so the buyer now owns the room and the cron sweep dismisses groups of deleted orders (992 orphans dismissed). Code 1008 is the 20-messages-per-second rate limit (40 simultaneous group sends: 19 sent, 21 refused); the outbox retries, so cards arrive late, not lost. unregistered custom message types are dropped silently, so the client registers every type before connecting. Open-channel history needs cloud retention, so join history comes from `enterChannel`. Metadata can be overwritten by any client, so we use cards and an HTTP state call as the truth.
+Findings that cost us time and may help others: a user can be in at most 1,000 group channels (code 22413); `dibs_bot` hit it because it owned every order room, so each room now has its own owner id that nobody can sign in as and the cron sweep dismisses groups of deleted orders (992 orphans dismissed). Code 1008 is the 20-messages-per-second rate limit (40 simultaneous group sends: 19 sent, 21 refused); the outbox retries, so cards arrive late, not lost. unregistered custom message types are dropped silently, so the client registers every type before connecting. Open-channel history needs cloud retention, so join history comes from `enterChannel`. Metadata can be overwritten by any client, so we use cards and an HTTP state call as the truth.
 
 ## 4. Why it is fair
 
@@ -85,7 +85,7 @@ A fair first tap has to be decided in one place. In Dibs that place is a Postgre
 
 - **Server-decided first tap.** Not "first comment", not a phone's clock. Everyone sees who won and how fast.
 - **Automatic waitlist promotion.** Bots and real buyers alike: hold ends, next in line gets it, a private alert says so.
-- **One order chat per winner.** A group channel owned by the buyer, with the assigned staff member; the bot posts the cards from outside the room. Nothing gets lost in DMs. Orders go to the owner above a value the owner sets, otherwise to the staff member with the fewest open orders.
+- **One order chat per winner.** A group channel for the buyer and the assigned staff member; the bot posts the cards from outside the room. Nothing gets lost in DMs. Orders go to the owner above a value the owner sets, otherwise to the staff member with the fewest open orders.
 - **Shop club.** A per-shop community channel: the seller's announcements, member chat and reviews from buyers with a paid order, each in its own subchannel. It turns one drop into a following. No real club has run yet.
 - **Scam shield.** Phone numbers, UPI IDs and payment links from anyone who is not staff are blocked in the sale room and logged without storing the text. The payment card says: pay only here, never to a number in chat.
 - **Judge mode with honest bots.** A judge can finish the whole loop alone. Bots are labelled, tap through the same claim function, never pay in the buyer demo, and never count in real numbers.
@@ -108,7 +108,7 @@ A fair first tap has to be decided in one place. In Dibs that place is a Postgre
 - No real drop has run. No real users, orders or seller feedback.
 - No phone verification: a typed phone number is not verified.
 - No payments handled. Buyers pay the seller's UPI directly; Dibs records the seller's confirmation.
-- Pre-message blocking is not available on our plan, so the scam shield removes a message after delivery (about 5 seconds in a manual run), not before.
+- Pre-message blocking is not available on our plan, so a message sent around the app is removed after delivery (about 5 seconds in a manual run). The app itself refuses such text before sending.
 - The club has no real members yet; it was tested with synthetic buyers.
 - Tap speed in buyers' browsers is recorded but no real-buyer numbers exist yet.
 - Video viewing is not built; no Hindi interface toggle; the order room links to the seller's WhatsApp number.
