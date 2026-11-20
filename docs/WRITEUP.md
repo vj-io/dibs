@@ -2,7 +2,7 @@
 
 First tap ==wins==. Everyone sees it. Nobody gets lost in the DMs.
 
-> **Live app:** https://tapdibs.vercel.app · judge demo at https://tapdibs.vercel.app/try (no sign-up)
+> **Live app:** https://tapdibs.vercel.app · judge demo at https://tapdibs.vercel.app/try (no sign-up) · demo video: VIDEO_URL
 > **Code:** https://github.com/vj-io/dibs (public)
 > **Nexconn App Key:** [[qd46yzrfq1obf]] (Singapore data center; the live app uses this key)
 > **Track:** Marketplace & Support · **Team Kaching:** Vaibhav Jangid
@@ -68,7 +68,7 @@ A fair first tap has to be decided in one place. In Dibs that place is a Postgre
 - A win is a hold with a timer. When it ends, `sweep_drop` promotes the next waitlisted buyer in order. The unit never returns to stock in between. Running the sweep twice changes nothing.
 - Every change writes the claim, an audit row and an outbox row in one transaction. A failed chat send never undoes a sale.
 
-**Test evidence** (real Postgres, synthetic taps, not real buyers; 83 unit, 32 database, 29 API, 20 judge-mode and webhook, plus browser end-to-end flows for buyer, seller and club, and production checks in [tests/prod](https://github.com/vj-io/dibs/tree/main/tests/prod); `npm test`, `npm run test:db`, `npm run test:api`, `npm run test:sandbox`, `npm run test:e2e`):
+**Test evidence** (real Postgres, synthetic taps, not real buyers; 84 unit, 33 database, 29 API, 20 judge-mode and webhook, plus browser end-to-end flows for buyer, seller and club, and production checks in [tests/prod](https://github.com/vj-io/dibs/tree/main/tests/prod); `npm test`, `npm run test:db`, `npm run test:api`, `npm run test:sandbox`, `npm run test:e2e`):
 
 - 300 concurrent claims on 2 units: exactly 2 won, 20 waitlisted in commit order, 278 "waitlist full".
 - The same buyer tapping at once: one claim.
@@ -87,7 +87,7 @@ A fair first tap has to be decided in one place. In Dibs that place is a Postgre
 ## 5. Innovation
 
 - **Server-decided first tap.** Not "first comment", not a phone's clock. Everyone sees who won and how fast.
-- **Public fairness record for every drop.** `/s/<shop>/d/<code>/record` lists every tap in the server's commit order: time after the piece went live, who won, who waited and at which place, whose hold lapsed and who got the piece from the waitlist, and who paid. Names only, never phone numbers; demo bots are marked. It is linked from the end of every drop and the seller console, shareable on WhatsApp with its own preview card, so a buyer who lost can check why instead of arguing in DMs.
+- **Public fairness record for every drop.** `/s/<shop>/d/<code>/record` lists every tap in the server's commit order, including taps turned away because the line was full: time after the piece went live, who won, who waited and at which place, whose hold lapsed and who got the piece from the waitlist, and who paid. Names only, never phone numbers; demo bots are marked. It is linked from the end of every drop and the seller console, shareable on WhatsApp with its own preview card, so a buyer who lost can check why instead of arguing in DMs.
 - **Automatic waitlist promotion.** Bots and real buyers alike: hold ends, next in line gets it, a private alert says so.
 - **One order chat per winner.** A group channel for the buyer and the assigned staff member; the bot posts the cards from outside the room. Nothing gets lost in DMs. Orders go to the owner above a value the owner sets, otherwise to the staff member with the fewest open orders.
 - **Shop club.** A per-shop community channel: the seller's announcements, member chat and reviews from buyers with a paid order, each in its own subchannel. It turns one drop into a following. No real club has run yet.
