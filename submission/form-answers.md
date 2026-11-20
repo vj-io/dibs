@@ -1,9 +1,11 @@
 # Submission form answers: Dibs (copy and paste)
 
+**Submitted 20 Nov 2026, 11:20 IST** (track Marketplace & Support). Edits are allowed until 22 Nov 2026, 23:59 IST; judges see the version saved at the deadline.
+
 Form: https://reskilll.com/hack/nexconn/dashboard/submit
 Team: **Kaching** (Vaibhav Jangid). One submission per team. Deadline 22 Nov 2026, 23:59 IST.
 
-Checked against the live form on 20 Nov 2026. It has 10 required items: project name, summary (max 2000), Nexconn packages used, App Key, SDK features (min 30), live app link, public GitHub repo, demo video link, write-up PDF upload, and the confirmation box. Traction (proof link and active users) is optional but counts as a significant bonus. The only item not ready is the demo video link: upload the film first (see 03).
+Checked against the live form on 20 Nov 2026. It has 10 required items: project name, summary (max 2000), Nexconn packages used, App Key, SDK features (min 30), live app link, public GitHub repo, demo video link, write-up PDF upload, and the confirmation box. Traction (proof link and active users) is optional but counts as a significant bonus. All 10 were filled and submitted on 20 Nov 2026.
 
 ## Track (on the dashboard, not in this form)
 
@@ -95,8 +97,10 @@ All buyers in the demo scenes are labelled bots or test buyers; no real drop has
 ```
 
 ```
-PASTE-THE-VIDEO-LINK-HERE
+https://youtu.be/Thbq509PAsA
 ```
+
+Uploaded 20 Nov 2026 to the Vaibhav Jangid channel as Unlisted; checked that it plays without signing in.
 
 ## 04 Write-up
 
