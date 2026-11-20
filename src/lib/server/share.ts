@@ -20,9 +20,10 @@ export async function dropByCode(shop: string, code: string): Promise<SharedDrop
 export const shareUrl = (d: SharedDrop, base: string) => `${base}/s/${d.shop.slug}/d/${d.code}`;
 
 /**
- * The fairness record's rows: pieces in drop order, every claim in commit order (committed_at, id: the waitlist's own
- * order), and paid-order timing. Public: display names only, never a phone; the waitlist place and who got a returned
- * unit come from the engine's audit events.
+ * The fairness record's rows: pieces in drop order, every tap in server order, and paid-order timing. A tap is a claim
+ * (at committed_at) or a tap turned away with the waitlist full (no claim: the engine's claim_waitlist_full audit event,
+ * at the time it answered, 0019); ties go claims first by id (the waitlist's own order), then events by id. Public:
+ * display names only, never a phone; the waitlist place and who got a returned unit come from the audit events too.
  */
 export async function dropRecord(dropId: string): Promise<{ pieces: RecordPiece[]; taps: RecordTap[]; pay: RecordPay }> {
   const pieces = await sql<RecordPiece[]>`
@@ -30,17 +31,28 @@ export async function dropRecord(dropId: string): Promise<{ pieces: RecordPiece[
            (select count(*)::int from item_stock s where s.drop_item_id = i.id) as variants
       from drop_items i join products p on p.id = i.product_id where i.drop_id = ${dropId} order by i.position`;
   const taps = await sql<RecordTap[]>`
-    with a as (select type, payload from audit_events where drop_id = ${dropId}
-                and type in ('claim_waitlisted', 'hold_expired', 'hold_released', 'hold_cancelled'))
-    select row_number() over (order by c.committed_at, c.id)::int as seq, c.drop_item_id as "itemId", c.buyer_id as "buyerId",
-           b.display_name as buyer, b.is_bot as "isBot", pv.label as "variantLabel", c.state, c.ms_after_live as ms,
-           c.promoted_at is not null as promoted, (w.payload->>'position')::int as "waitPos", nb.display_name as "passedTo"
-      from claims c join buyers b on b.id = c.buyer_id join product_variants pv on pv.id = c.variant_id
-      left join a w on w.type = 'claim_waitlisted' and w.payload->>'claimId' = c.id::text
-      left join a h on h.type <> 'claim_waitlisted' and h.payload->>'claimId' = c.id::text
-      left join claims nc on nc.id = (h.payload->>'promotedClaimId')::uuid
-      left join buyers nb on nb.id = nc.buyer_id
-     where c.drop_id = ${dropId} order by seq`;
+    with a as (select id, actor_id, type, payload from audit_events where drop_id = ${dropId}
+                and type in ('claim_waitlisted', 'hold_expired', 'hold_released', 'hold_cancelled', 'claim_waitlist_full')),
+    t as (
+      select c.committed_at as at, c.id as cid, null::bigint as eid, c.drop_item_id as "itemId", c.buyer_id as "buyerId",
+             b.display_name as buyer, b.is_bot as "isBot", pv.label as "variantLabel", c.state, c.ms_after_live as ms,
+             c.promoted_at is not null as promoted, (w.payload->>'position')::int as "waitPos", nb.display_name as "passedTo"
+        from claims c join buyers b on b.id = c.buyer_id join product_variants pv on pv.id = c.variant_id
+        left join a w on w.type = 'claim_waitlisted' and w.payload->>'claimId' = c.id::text
+        left join a h on h.type <> 'claim_waitlisted' and h.payload->>'claimId' = c.id::text
+        left join claims nc on nc.id = (h.payload->>'promotedClaimId')::uuid
+        left join buyers nb on nb.id = nc.buyer_id
+       where c.drop_id = ${dropId}
+      union all
+      select (f.payload->>'at')::timestamptz, null, f.id, i.id, b.id, b.display_name, b.is_bot, pv.label, 'waitlist_full',
+             (f.payload->>'ms')::int, false, null, null
+        from a f join drop_items i on i.id = (f.payload->>'itemId')::uuid
+        join product_variants pv on pv.product_id = i.product_id and pv.key = f.payload->>'variant'
+        join buyers b on b.id = f.actor_id
+       where f.type = 'claim_waitlist_full')
+    select row_number() over (order by at, cid, eid)::int as seq, "itemId", "buyerId", buyer, "isBot", "variantLabel", state, ms,
+           promoted, "waitPos", "passedTo"
+      from t order by seq`;
   const [pay] = await sql<RecordPay[]>`
     select count(*)::int as "paidOrders",
            (extract(epoch from max(o.paid_at) - (select min(live_at) from drop_items where drop_id = ${dropId})) * 1000)::int as "spanMs",

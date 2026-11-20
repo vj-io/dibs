@@ -1,13 +1,14 @@
-// Fairness record (/s/<shop>/d/<code>/record): every tap on a drop in the order the database committed it.
+// Fairness record (/s/<shop>/d/<code>/record): every tap on a drop in the order the database committed it, taps turned
+// away with the waitlist full included (they leave no claim, only an audit event: 0019).
 // Pure: the query lives in server/share.ts; this turns its rows into plain words. Never sees a phone number.
 import { displayName, tapTime } from "./codec.ts";
 import type { ClaimState, DropStatus } from "./types.ts";
 
 /** A piece in drop order. variants = how many sizes it has (the size shows on each tap only when there is a choice). */
 export type RecordPiece = { itemId: string; position: number; title: string; liveAt: Date | string | null; variants: number };
-/** One claim. seq = the server's commit order across the drop; waitPos = place in line when it joined; passedTo = who got the unit next. */
+/** One tap: a claim, or "waitlist_full" (no claim). seq = the server's order across the drop; waitPos = place in line when it joined; passedTo = who got the unit next. */
 export type RecordTap = {
-  seq: number; itemId: string; buyerId: string; buyer: string; isBot: boolean; variantLabel: string; state: ClaimState;
+  seq: number; itemId: string; buyerId: string; buyer: string; isBot: boolean; variantLabel: string; state: ClaimState | "waitlist_full";
   ms: number | null; promoted: boolean; waitPos: number | null; passedTo: string | null;
 };
 /** Paid orders: how many, first piece live -> last confirmed payment, and the median order -> confirmed payment. */
@@ -20,7 +21,7 @@ export type Totals = { pieces: number; taps: number; buyers: number; fastestMs: 
 /** The public name the ticker shows ("Priya S."), with any digit dropped so a number can never reach this page. */
 export const publicName = (name: string) => displayName(name.replace(/\d/g, ""));
 
-const END: Record<ClaimState, string> = {
+const END: Record<RecordTap["state"], string> = {
   held: "Holding, not paid yet",
   payment_claimed: "Says paid, seller checking",
   paid: "Paid",
@@ -31,10 +32,12 @@ const END: Record<ClaimState, string> = {
   expired: "Hold ran out",
   released: "Released the hold",
   cancelled: "Hold cancelled by the seller",
+  waitlist_full: "Waitlist full: no place left in line",
 };
 
 /** What happened to one tap, in order: "Waitlisted #1" -> "Got it from the waitlist" -> "Paid". */
 export function steps(t: RecordTap): string[] {
+  if (t.state === "waitlist_full") return [END.waitlist_full];
   const queued = t.promoted || t.state === "waitlisted" || t.state === "left" || t.state === "missed";
   const s = [queued ? (t.waitPos ? `Waitlisted #${t.waitPos}` : "Waitlisted") : "Won"];
   if (t.promoted) s.push("Got it from the waitlist");

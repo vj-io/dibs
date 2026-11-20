@@ -57,8 +57,9 @@ export default async function RecordPage({ params }: Params) {
               <Banner className="mt-5 rounded-wobble border-2">This is a demo room. The buyers marked 🤖 are demo bots, and no real money moved.</Banner>
             )}
             <p className="mt-5 text-lg">
-              Every tap on this drop, in the order the server committed it. Times are the server&apos;s commit times; the database,
-              not a phone or a chat message, decided the order.
+              Every tap on this drop, in the order the server committed it, including taps turned away because the waitlist was
+              full. Times are the server&apos;s commit times, counted from when the piece went live; the database, not a phone or
+              a chat message, decided the order.
             </p>
             <p className="mt-4 font-mono text-lg font-bold" data-testid="record-totals">{totalsLine(r.rec.totals)}</p>
             {r.pay.map((l) => <p key={l} className="mt-1">{l}</p>)}

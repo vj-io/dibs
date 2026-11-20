@@ -42,6 +42,22 @@ test("record never contains a phone number", () => {
   assert.doesNotMatch(out, /\d{10}|98765/);
 });
 
+test("a tap turned away with the waitlist full is a tap: server order, bot marked, counted, no phone", () => {
+  // engine 0019: no claim row, only a claim_waitlist_full audit event; handed over first, shown by seq
+  const full = [
+    tap({ seq: 5, itemId: "i1", buyerId: "b4", buyer: "9876543210 Meera Iyer", isBot: true, state: "waitlist_full", ms: 8012 }),
+    tap({ seq: 6, itemId: "i2", buyerId: "b1", buyer: "Kuldeep", state: "waitlist_full", ms: 19400 }),
+  ];
+  const r = buildRecord(pieces, [...full, ...taps]);
+  assert.deepEqual(r.pieces[0].taps.map((t) => t.name), ["Kuldeep", "Aarav", "Priya S.", "Meera I."]);
+  assert.deepEqual(r.pieces[0].taps[3], { name: "Meera I.", isBot: true, variant: "M", time: "8.0 s", steps: ["Waitlist full: no place left in line"] });
+  assert.deepEqual(r.pieces[1].taps.map((t) => t.steps.join(" → ")), ["Waitlisted #2 → Still in line", "Waitlist full: no place left in line"]);
+  assert.equal(r.pieces[1].taps[1].isBot, false);
+  assert.deepEqual(r.totals, { pieces: 2, taps: 6, buyers: 4, fastestMs: 3128 });
+  assert.equal(totalsLine(r.totals), "2 pieces · 6 taps · 4 buyers");
+  assert.doesNotMatch(JSON.stringify(r), /\d{10}|98765/);
+});
+
 test("paid-order lines: real, demo, and none when nothing is paid", () => {
   assert.deepEqual(payLines({ paidOrders: 6, spanMs: 332_027, medianPayMs: 71_732 }, false), [
     "6 orders sold and paid in 5.5 minutes",

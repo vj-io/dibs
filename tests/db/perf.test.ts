@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { admin, call, claim, makeFixture, closeAll, staffCall, stockInvariant, type J } from "./helpers.ts";
 import { drainOutbox, type Sender } from "../../src/lib/server/outbox.ts";
 import { sql } from "../../src/lib/server/db.ts";
+import { dropRecord } from "../../src/lib/server/share.ts";
 
 after(async () => { await closeAll(); await sql.end({ timeout: 5 }); });
 
@@ -25,6 +26,57 @@ test("waitlist_full fast path: a freed place is taken at once, a waiting buyer g
   assert.equal(r.position, 2);
   assert.equal((await claim(item, "M", b4)).result, "waitlist_full");
   for (const s of await stockInvariant(f.dropId)) assert.equal(s.total, s.available + s.taken);
+});
+
+test("0019: a waitlist_full tap writes one claim_waitlist_full event and no claim, on both paths, and is in the record", async () => {
+  const f = await makeFixture({ items: [{ variants: [{ key: "M", qty: 1 }] }], buyers: 6, waitlistMax: 2 });
+  const item = f.items[0].id, [b0, b1, b2, b3, b4, b5] = f.buyers;
+  const won = await claim(item, "M", b0);
+  assert.equal(won.result, "won");
+  assert.equal((await claim(item, "M", b1)).result, "waitlisted");
+  assert.equal((await claim(item, "M", b2)).result, "waitlisted");
+  // lock-free path: the full line is in the committed state this tap reads
+  assert.equal((await claim(item, "M", b3)).result, "waitlist_full");
+  assert.equal((await release(won.claimId, b0)).ok, true); // b1 promoted: one place free
+  // locked path: b4 takes the last place inside a transaction that keeps the drop lock; b5's lock-free check sees the
+  // free place, so b5 has to queue for the lock (checked), and after the commit the locked path finds the line full
+  let b5tap: Promise<J> | undefined;
+  const b4claim = await admin.begin(async (tx) => {
+    const [{ r }] = await tx`select claim_dibs(${item}::uuid, 'M', ${b4}::uuid, now()) as r`;
+    const [{ pid }] = await tx`select pg_backend_pid() as pid`;
+    b5tap = claim(item, "M", b5);
+    for (let i = 0; ; i++) {
+      const [{ n }] = await admin`select count(*)::int as n from pg_stat_activity where ${pid}::int = any(pg_blocking_pids(pid))`;
+      if (n > 0) break;
+      assert.ok(i < 100, "b5's tap never waited for the drop lock (answered lock-free?)");
+      await new Promise((res) => setTimeout(res, 50));
+    }
+    return r as J;
+  });
+  assert.equal(b4claim.result, "waitlisted");
+  assert.equal((await b5tap!).result, "waitlist_full");
+
+  const ev = await admin`select actor_id, payload from audit_events where drop_id = ${f.dropId} and type = 'claim_waitlist_full' order by id`;
+  assert.deepEqual(ev.map((e) => e.actor_id), [b3, b5], "one event per waitlist_full tap");
+  for (const e of ev) {
+    assert.equal(e.payload.itemId, item);
+    assert.equal(e.payload.variant, "M");
+    assert.ok(Number.isInteger(e.payload.ms) && e.payload.ms >= 0, `ms ${e.payload.ms}`);
+  }
+  const [c4] = await admin`select committed_at from claims where id = ${b4claim.claimId}`;
+  assert.ok(new Date(ev[1].payload.at) > c4.committed_at, "the locked-path answer comes after the claim that filled the line");
+  const [{ n }] = await admin`select count(*)::int as n from claims where drop_item_id = ${item} and buyer_id in ${admin([b3, b5])}`;
+  assert.equal(n, 0, "no claim row for a waitlist_full tap");
+
+  const rec = await dropRecord(f.dropId);
+  assert.deepEqual(rec.taps.map((t) => [t.seq, t.buyerId, t.state]), [
+    [1, b0, "released"], [2, b1, "held"], [3, b2, "waitlisted"], [4, b3, "waitlist_full"], [5, b4, "waitlisted"], [6, b5, "waitlist_full"],
+  ]);
+  const t4 = rec.taps[3];
+  assert.equal(t4.variantLabel, "Size M");
+  assert.equal(t4.ms, ev[0].payload.ms);
+  assert.equal(t4.isBot, false);
+  assert.equal(t4.buyer, "Buyer3 T.");
 });
 
 test("waitlist_full fast path racing a release: at most the freed place is filled, never more", async () => {
