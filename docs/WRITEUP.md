@@ -116,10 +116,10 @@ A fair first tap has to be decided in one place. In Dibs that place is a Postgre
 - Latencies come from one machine in India. Phones on 4G are not measured. The 700 ms median target is met for a single warm tap (149 to 217 ms) and not met inside a 300-tap burst from one machine (median 2,752 ms).
 - All tests and the load simulation use synthetic taps.
 
-## 8. What existed before, and AI assistance
+## 8. What existed before, and how we built it
 
 Dibs is a new build made for this hackathon. It reuses two things from the same team's earlier entry, ClarityLoop (same team, same Nexconn app): the pattern for a signed Nexconn Server API client, and the doodle design language.
 
-**AI coding agents (Claude Code) wrote most of the code under the team's direction.** The team set the product, the fairness rules and the tests, and reviewed the results. The product also uses AI at run time for three helper jobs, described above.
+**How the team worked.** Team Kaching (Vaibhav Jangid) wrote the product spec, chose the problem and set the rules Dibs must never break (the server decides who was first, bots are always labelled, no invented numbers). The team set the design direction, configured Nexconn (Console app, webhook, Polaris message tracing to debug a missed scam removal), and ran the checks on production and in iPhone Safari on the iOS Simulator. The demo film's side-by-side real drop and four-phone race were the team's ideas. We used AI coding tools for much of the implementation; every feature was specified, reviewed and tested by the team. The product also uses AI at run time for three helper jobs, described above.
 
 Evidence sources: Ulive.me, Wati, Business Insider India (Instagram live shopping; Tanishq), Adgully, IMARC, CommentSold help. Links are in the README.

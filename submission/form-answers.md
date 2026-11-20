@@ -1,6 +1,6 @@
 # Submission form answers: Dibs (copy and paste)
 
-**Submitted 20 Nov 2026, 11:20 IST** (track Marketplace & Support). Edits are allowed until 22 Nov 2026, 23:59 IST; judges see the version saved at the deadline.
+**Submitted 20 Nov 2026, 11:20 IST** (track Marketplace & Support). Updated the same day: new write-up PDF (section 8 now describes the team's work) and the traction proof link. Edits are allowed until 22 Nov 2026, 23:59 IST; judges see the version saved at the deadline.
 
 Form: https://reskilll.com/hack/nexconn/dashboard/submit
 Team: **Kaching** (Vaibhav Jangid). One submission per team. Deadline 22 Nov 2026, 23:59 IST.
@@ -118,24 +118,22 @@ The rules: "Proof that real people use your app ... Traction gives a significant
 Never count the demo bots, the test scripts or ClarityLoop's traffic on the shared Nexconn app.
 
 
-**Traction link** (https): leave empty unless a real drop has run. If it has, link a screenshot or analytics page you own. Only real numbers.
-
-**Active users** (whole number)
-
-The honest number today is **0 real users**. No real drop has run yet. Judges count active users on the Nexconn app through the App Key; ClarityLoop shares this Nexconn app, so the Console may show its users and test traffic too. Do not claim them as Dibs users.
-
-Enter **0** today. After a real drop, use the `/impact` page (real buyers only, never demo bots), not the raw Console count:
+**Proof link** (saved 20 Nov 2026)
 
 ```
-0
+https://tapdibs.vercel.app/impact
 ```
+
+The page counts real drops and real buyers only (demo rooms, bots and test scripts never count), so the same link shows real numbers after the first real drop. Today it says no real drop has run yet.
+
+**Active users** (whole number, optional): left blank. The honest number today is **0 real users**. Judges count active users on the Nexconn app through the App Key; ClarityLoop shares this Nexconn app, so the Console may show its users and test traffic too. Do not claim them as Dibs users. After a real drop, enter the buyer count from `/impact`, not the raw Console count.
 
 ## 06 Prior work
 
 **Did any part of this project exist before the challenge?** Choose **No, built for this challenge**. If a details box appears (or you choose "Yes, it extends earlier work"), paste this:
 
 ```
-Dibs is a new build made for this challenge. It reuses two things from our own earlier entry, ClarityLoop (same team, same Nexconn app): the pattern for a signed Nexconn Server API client, and the doodle design language (paper, ink lines, lime highlighter, hot pink marker). Everything else, including the claim engine, the database, the sale room, the order room, judge mode and the scam shield, was built in the challenge window. AI coding agents (Claude Code) wrote most of the code under our direction. We set the product, the fairness rules and the tests, and reviewed the results.
+Dibs is a new build made for this challenge. It reuses two things from our own earlier entry, ClarityLoop (same team, same Nexconn app): the pattern for a signed Nexconn Server API client, and the doodle design language (paper, ink lines, lime highlighter, hot pink marker). Everything else, including the claim engine, the database, the sale room, the order room, judge mode and the scam shield, was built in the challenge window. We wrote the spec, set the fairness and honesty rules, chose the design direction, set up Nexconn and ran every test and review; we used AI coding tools for much of the implementation.
 ```
 
 ## Confirmation box

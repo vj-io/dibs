@@ -284,7 +284,7 @@ Honest limits, each checked against the code:
 
 Dibs is a new build made for this hackathon. It reuses two things from the same team's earlier entry, **ClarityLoop** (same team, same Nexconn app): the pattern for a signed Nexconn Server API client, and the doodle design language (paper, ink lines, lime highlighter, hot pink marker). ClarityLoop itself is a separate repo and deployment.
 
-**AI assistance:** AI coding agents (Claude Code) wrote most of the code under the team's direction. The team set the product, the rules and the checks, and reviewed the results.
+**How we built it:** Team Kaching (Vaibhav Jangid) wrote the product spec, chose the problem and set the rules Dibs must never break (the server decides who was first, bots are always labelled, no invented numbers). The team set the design direction, configured Nexconn (Console app, webhook, Polaris message tracing to debug a missed scam removal), and ran the checks on production and in iPhone Safari on the iOS Simulator. The demo film's side-by-side real drop and four-phone race were the team's ideas. We used AI coding tools for much of the implementation; every feature was specified, reviewed and tested by the team.
 
 ## Credits and licence
 
