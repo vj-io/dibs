@@ -2,7 +2,7 @@
 
 First tap ==wins==. Everyone sees it. Nobody gets lost in the DMs.
 
-> **Live app:** https://tapdibs.vercel.app · judge demo at /try (no sign-up)
+> **Live app:** https://tapdibs.vercel.app · judge demo at https://tapdibs.vercel.app/try (no sign-up)
 > **Code:** https://github.com/vj-io/dibs (public)
 > **Nexconn App Key:** [[qd46yzrfq1obf]] (Singapore data center; the live app uses this key)
 > **Track:** Marketplace & Support · **Team Kaching:** Vaibhav Jangid
@@ -22,11 +22,11 @@ Small Indian sellers run "first come, first served" drops in comments, DMs and W
 
 Dibs is a live sale room. The seller drops one piece at a time. Buyers tap **Dibs**. The server decides who was first, and the whole room sees it within about a second. Late buyers join a waitlist with a live position. If the winner does not pay, the next buyer is promoted automatically. Each winner gets one private order chat with the seller's team, with a UPI payment card and read receipts. Dibs never touches the money.
 
-- **Seller:** an account with an email and password (no email needed), a three-step start wizard (`/seller/start`), then the console: go live, drop next, claims ledger, room chat with mute and ban, team desk, dashboard, CSV export of a drop's orders, staff invite links. A share kit gives the drop link, announcement texts in English and Hinglish, a QR PNG and a rehearsal link into the demo room.
+- **Seller:** an account with an email and password (no email needed), a three-step start wizard (sign up at [tapdibs.vercel.app/seller](https://tapdibs.vercel.app/seller)), then the console: go live, drop next, claims ledger, room chat with mute and ban, team desk, dashboard, CSV export of a drop's orders, staff invite links. A share kit gives the drop link, announcement texts in English and Hinglish, a QR PNG and a rehearsal link into the demo room.
 - **Buyer:** one link from WhatsApp (with a generated preview image), a name and a phone number, one tap. Before the start: add-to-calendar and WhatsApp-share buttons.
 - **Shop club:** each shop can run a club on Nexconn community channels with #drops, #chat and #reviews. On in production.
-- **Judge mode (/try):** a private demo room with 40 labelled 🤖 bots, the promotion and the order room come about 25 seconds after the tap (about 34 seconds from the click; 25 simulated judges on this build, 22 to 27 s after the tap; bot holds 12 s, yours 90 s). The demo payment card reads "Demo shop: nothing to pay" and cannot be paid. Piece 2 is the last piece and stays winnable for 10 s; the demo then ends on a card with your own times (about a minute from the click on production, 20 Nov 2026). Be a buyer or be the seller.
-- **Pages:** /how-it-works (the Nexconn feature map with live flag state), /impact (real usage only), /health (staff only; shows the sale's health only).
+- **Judge mode ([/try](https://tapdibs.vercel.app/try)):** a private demo room with 40 labelled 🤖 bots, the promotion and the order room come about 25 seconds after the tap (about 34 seconds from the click; 25 simulated judges on this build, 22 to 27 s after the tap; bot holds 12 s, yours 90 s). The demo payment card reads "Demo shop: nothing to pay" and cannot be paid. Piece 2 is the last piece and stays winnable for 10 s; the demo then ends on a card with your own times (about a minute from the click on production, 20 Nov 2026). Be a buyer or be the seller.
+- **Pages:** [/how-it-works](https://tapdibs.vercel.app/how-it-works) (the Nexconn feature map with live flag state), [/impact](https://tapdibs.vercel.app/impact) (real usage only), /health (staff only; shows the sale's health only).
 
 Stack: Next.js 16, TypeScript, Supabase Postgres in Mumbai, Vercel in Mumbai, Nexconn Chat Web SDK and Server API (Singapore), Vercel AI SDK.
 
@@ -52,7 +52,7 @@ Everything live runs on Nexconn. The database decides; Nexconn carries what peop
 | Pre-message callback | Block scams before delivery | Not available on this plan (greyed out in the Console); flag off | The app refuses before sending; the webhook removes after delivery |
 | Call SDK | Video viewing | Behind flag (off) | Not tested; not built |
 
-The numbers above come from the proof of concept (`docs/NEXCONN_FINDINGS.md`), measured from one Mac in India, not from phones on 4G. Production tap latency is in section 4.
+The numbers above come from the proof of concept ([Nexconn findings](https://github.com/vj-io/dibs/blob/main/docs/NEXCONN_FINDINGS.md)), measured from one Mac in India, not from phones on 4G. Production tap latency is in section 4.
 
 Findings that cost us time and may help others: a user can be in at most 1,000 group channels (code 22413); `dibs_bot` hit it because it owned every order room, so each room now has its own owner id that nobody can sign in as and the cron sweep dismisses groups of deleted orders (992 orphans dismissed). Code 1008 is the 20-messages-per-second rate limit (40 simultaneous group sends: 19 sent, 21 refused); the outbox retries, so cards arrive late, not lost. unregistered custom message types are dropped silently, so the client registers every type before connecting. Open-channel history needs cloud retention, so join history comes from `enterChannel`. Metadata can be overwritten by any client, so we use cards and an HTTP state call as the truth.
 
@@ -65,21 +65,21 @@ A fair first tap has to be decided in one place. In Dibs that place is a Postgre
 - A win is a hold with a timer. When it ends, `sweep_drop` promotes the next waitlisted buyer in order. The unit never returns to stock in between. Running the sweep twice changes nothing.
 - Every change writes the claim, an audit row and an outbox row in one transaction. A failed chat send never undoes a sale.
 
-**Test evidence** (real Postgres, synthetic taps, not real buyers; 74 unit, 32 database, 27 API, 19 judge-mode and webhook, plus browser end-to-end flows for buyer, seller and club, and production checks in `tests/prod`; `npm test`, `npm run test:db`, `npm run test:api`, `npm run test:sandbox`, `npm run test:e2e`):
+**Test evidence** (real Postgres, synthetic taps, not real buyers; 74 unit, 32 database, 27 API, 19 judge-mode and webhook, plus browser end-to-end flows for buyer, seller and club, and production checks in [tests/prod](https://github.com/vj-io/dibs/tree/main/tests/prod); `npm test`, `npm run test:db`, `npm run test:api`, `npm run test:sandbox`, `npm run test:e2e`):
 
 - 300 concurrent claims on 2 units: exactly 2 won, 20 waitlisted in commit order, 278 "waitlist full".
 - The same buyer tapping at once: one claim.
 - Claims racing an item close: fully accepted or refused, never half-written.
 - Ten concurrent sweeps promote each unit exactly once.
 - A random mix of claims, releases, expiries and closes across concurrent workers keeps stock exact.
-- Reproduce with `npm run test:db`. Full suite list is in the README.
+- Reproduce with `npm run test:db`. Full suite list: [README, Tests](https://github.com/vj-io/dibs#tests).
 
-**Production load simulation** (`scripts/load-sim.ts` against https://tapdibs.vercel.app, 19 Nov 2026; synthetic taps from one laptop, not real buyers; full log in `docs/load-sim-results.md`):
+**Production load simulation** ([scripts/load-sim.ts](https://github.com/vj-io/dibs/blob/main/scripts/load-sim.ts) against https://tapdibs.vercel.app, 19 Nov 2026; synthetic taps from one laptop, not real buyers; full log in [load-sim results](https://github.com/vj-io/dibs/blob/main/docs/load-sim-results.md)):
 
 - Latest run (19 Nov 2026, 10:09 UTC, commit 892489c): 300 taps inside 504 ms on a variant with 2 units, 400 simulated buyers. 2 won, 200 waitlisted (the cap for that test shop), 98 "waitlist full", 0 errors, 0 rate-limited. All 8 database invariants passed: zero double sells, stock never negative, waitlist positions unique and in commit order.
 - Client-observed claim latency inside the burst: median 2,752 ms, p95 3,952 ms; server time per claim, median 1,845 ms. Each simulated buyer opens its own TLS connection from one laptop, so this is burst queueing, not a normal tap. The two winning taps took 163 and 181 ms. A single warm tap outside the burst took 149 to 217 ms (earlier run).
 - Our target of a median under 700 ms is met for a single warm tap from a laptop in India. It is not met inside a 300-tap burst from one machine. Phones on 4G are not measured.
-- The first production runs failed on database connection limits. Moving engine calls to Supabase's HTTP RPC (so a burst queues instead of failing; migration 0007) and making the tap one round trip (`api_claim`) fixed it. The failing runs are kept in the results file. `docs/perf.md` explains where the burst time goes and what we did not change. Migration 0013 also makes five throwaway tables unlogged to cut disk writes.
+- The first production runs failed on database connection limits. Moving engine calls to Supabase's HTTP RPC (so a burst queues instead of failing; migration 0007) and making the tap one round trip (`api_claim`) fixed it. The failing runs are kept in the results file. [docs/perf.md](https://github.com/vj-io/dibs/blob/main/docs/perf.md) explains where the burst time goes and what we did not change. Migration 0013 also makes five throwaway tables unlogged to cut disk writes.
 
 ## 5. Innovation
 
@@ -124,4 +124,4 @@ Dibs is a new build made for this hackathon. It reuses two things from the same 
 
 **How the team worked.** Team Kaching (Vaibhav Jangid) wrote the product spec, chose the problem and set the rules Dibs must never break (the server decides who was first, bots are always labelled, no invented numbers). The team set the design direction, configured Nexconn (Console app, webhook, Polaris message tracing to debug a missed scam removal), and ran the checks on production and in iPhone Safari on the iOS Simulator. The demo film's side-by-side real drop and four-phone race were the team's ideas. We used AI coding tools for much of the implementation; every feature was specified, reviewed and tested by the team. The product also uses AI at run time for three helper jobs, described above.
 
-Evidence sources: Ulive.me, Wati, Business Insider India (Instagram live shopping; Tanishq), Adgully, IMARC, CommentSold help. Links are in the README.
+Evidence sources: [Ulive.me](https://blog.ulive.me/posts/guide-to-live-selling-on-facebook-and-instagram-without-manual-work), [Wati](https://www.wati.io/en/blog/how-to-sell-on-instagram/), Business Insider India on [Instagram live shopping](https://www.businessinsider.in/tech/apps/news/instagram-to-end-live-shopping-feature-on-march-16/amp_articleshow/97935811.cms) and [Tanishq video calls](https://www.businessinsider.in/advertising/brands/article/tanishq-has-brought-in-around-rs-100-crore-sales-through-video-calls-in-the-last-2-months/articleshow/77767849.cms), [Adgully](https://www.adgully.com/indian-live-commerce-market-to-reach-4-5-bn-by-2025-mansi-jain-143341.html), [IMARC](https://www.imarcgroup.com/india-live-commerce-market), [CommentSold help](https://help.commentsold.com/hc/en-us/articles/4401982035860).
