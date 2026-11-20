@@ -32,7 +32,7 @@ function parseJsonObject(raw: string): unknown {
 }
 
 export async function generateJson<T>(
-  job: AiJob, schema: z.ZodType<T>, system: string, prompt: string, opts: { timeoutMs: number },
+  job: AiJob, schema: z.ZodType<T>, system: string, prompt: string, opts: { timeoutMs: number; perModelMs?: number },
 ): Promise<T | null> {
   const t0 = Date.now(), deadline = t0 + opts.timeoutMs;
   let used = "none", ok = false, out: T | null = null;
@@ -49,7 +49,7 @@ export async function generateJson<T>(
           const r = await generateText({
             model: google(m.replace(/^google\//, "")),
             instructions: system, prompt: prompt + hint, temperature: 0, maxOutputTokens: 400, maxRetries: 0,
-            abortSignal: AbortSignal.timeout(left),
+            abortSignal: AbortSignal.timeout(Math.min(left, opts.perModelMs ?? left)),
           });
           const parsed = schema.safeParse(parseJsonObject(r.text));
           if (parsed.success) { out = parsed.data; ok = true; break models; }
@@ -59,7 +59,7 @@ export async function generateJson<T>(
           const msg = (e instanceof Error ? e.message : String(e)) + " " + String((e as { responseBody?: unknown })?.responseBody ?? "");
           if (QUOTA.test(msg)) restingUntil.set(m, Date.now() + quotaRestMs(msg));
           else if (BUSY.test(msg)) restingUntil.set(m, Date.now() + 60_000);
-          else if (/abort|timeout/i.test(msg)) break models;       // out of time: stop
+          else if (/abort|timeout/i.test(msg) && !opts.perModelMs) break models; // out of time: stop (with perModelMs, a slow model hands over to the next)
           break;                                                    // next model
         }
       }
