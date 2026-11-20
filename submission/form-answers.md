@@ -90,17 +90,26 @@ Dibs: first tap wins (Nexconn Build Challenge 2026, Team Kaching)
 ```
 Dibs is a live sale room for Indian sellers on WhatsApp and Instagram, built on the Nexconn Chat SDK. The seller drops one piece at a time, buyers tap Dibs, the server decides who was first, late buyers join a waitlist, and every winner gets a private order chat.
 
-Try it yourself: https://tapdibs.vercel.app/try
+Try it yourself (about a minute, no sign-up): https://tapdibs.vercel.app/try
+Live app: https://tapdibs.vercel.app
+How it works and the Nexconn feature map: https://tapdibs.vercel.app/how-it-works
+Real usage (real drops and real buyers only): https://tapdibs.vercel.app/impact
 Code: https://github.com/vj-io/dibs
+Nexconn platform findings: https://github.com/vj-io/dibs/blob/main/docs/NEXCONN_FINDINGS.md
+Production load test: https://github.com/vj-io/dibs/blob/main/docs/load-sim-results.md
 
-All buyers in the demo scenes are labelled bots or test buyers; no real drop has run yet.
+First real drop, 20 Nov 2026: our own small shop sold 3 digital pieces to 3 friends on their own phones. 6 paid orders (₹32 by UPI), 2 waitlist saves, median 281 ms tap to result.
+
+The buyers in this video's demo scenes are labelled bots or test buyers; the video was recorded before that first real drop.
+
+Team Kaching · Nexconn Build Challenge 2026 · Marketplace & Support
 ```
 
 ```
 https://youtu.be/Thbq509PAsA
 ```
 
-Uploaded 20 Nov 2026 to the Vaibhav Jangid channel as Unlisted; checked that it plays without signing in.
+Uploaded 20 Nov 2026 to the Vaibhav Jangid channel as Unlisted; checked that it plays without signing in. Description updated the same day (above) with the first real drop and direct links. YouTube makes external links clickable only after the channel's one-time verification.
 
 ## 04 Write-up
 
