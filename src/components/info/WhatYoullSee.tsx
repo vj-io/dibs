@@ -6,6 +6,7 @@ const BEATS: { what: string; nex: string }[] = [
   { what: "Land on the waitlist, then get promoted when a bot's hold runs out.", nex: "A system-channel alert tells you privately." },
   { what: "Open your private order chat and tap I've paid (a demo payment, no real money).", nex: "A Nexconn group channel with the order card, pay card and read receipts." },
   { what: "Win piece 2 outright.", nex: "Server-decided claim; the whole room sees it over the open channel." },
+  { what: "Open the fairness record from the end card.", nex: "Every tap of your demo drop in the order the server committed it, bots marked." },
 ];
 
 // Below the demo entry on /try. Short, so the demo buttons stay the first thing on screen.

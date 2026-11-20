@@ -43,6 +43,8 @@ export const FEATURES: Feature[] = [
     see: "Be the seller on /try", proof: "Measured: 128 ms; reads 1 while connected and 0 about 3 s after the page closed.", fallback: "Round-robin over all active staff." },
   { name: "message:send webhook", job: "Nexconn tells the server about each chat line. That drives the typed-claim helper, the answer bot and the scam shield.",
     see: "Type \"booked\" in the sale room on /try", proof: "Working on production since 19 Nov 2026: a buyer message with a UPI id was delivered, then removed for everyone about 5 s later, and the sender saw the notice (one manual run).", fallback: "Mock transport: an in-process bus with the same interface." },
+  { name: "message:send webhook: order-room messages", job: "A buyer's message in their order room (a group channel) reaches the server too. Every seller page then shows it: a count on Desk, a line with the text and an Open link, \"(N)\" in the tab title.",
+    see: "Be the seller on /try: a demo buyer writes in Hinglish in their order room; open it and tap Translate", proof: "Checked on production 20 Nov 2026: a buyer's order-room text was counted for the seller within seconds.", fallback: "Mock transport: the mock send route feeds the same counter." },
   { name: "Pre-message callback", job: "The scam shield decides pass or block before a message is delivered, from rules only.",
     see: "Type a UPI id in the sale room on /try", flag: "premessage", whenOff: "off",
     proof: "Not available on our Nexconn plan (greyed out in the Console), so it is off.", fallback: "With this off, the app refuses such text before sending and the webhook removes anything sent around the app." },

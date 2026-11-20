@@ -52,6 +52,7 @@ const AI_NEVER = ["decide who was first", "create or cancel claims", "confirm pa
 const AI_JOBS: { icon: IconName; title: string; body: string }[] = [
   { icon: "tap", title: "Typed-claim helper", body: "Someone types \"booked\" or \"M wala chahiye\" in the room. Rules look for the claim words, the item number and the variant first; a model is asked only when the rules cannot decide. The buyer gets a private one-tap prompt. It never makes the claim." },
   { icon: "chat", title: "Answer bot", body: "Answers repeat questions (price, size, shipping) from the shop's FAQ lines and the live piece, as a labelled 🤖 assistant. If the answer is not in those facts it stays silent." },
+  { icon: "chat", title: "Translate in the order chat", body: "Under a message from the other side, Translate shows it in English or Hindi (Hinglish counts as Hindi), labelled \"Translated by AI\". Only the person who tapped sees it; the message itself never changes." },
   { icon: "shield", title: "Scam shield", body: "Rules first, no model: a phone number, a UPI id or a payment link from anyone but staff is blocked or removed. A model reviews only borderline text after delivery. It can only flag a message for staff or remove it." },
 ];
 
@@ -122,6 +123,7 @@ export default function HowItWorks() {
               <li className="flex items-start gap-3"><Icon name="clock" size={26} stroke={2.4} className="mt-0.5 shrink-0" /><span><strong>The time you see is the database&apos;s.</strong> It is the moment the database accepted the claim minus the moment the piece went live. Your phone&apos;s clock and network speed are not in it.</span></li>
               <li className="flex items-start gap-3"><Icon name="queue" size={26} stroke={2.4} className="mt-0.5 shrink-0" /><span><strong>Late taps wait in order.</strong> If a winner does not pay in time, the next in line is promoted and told.</span></li>
               <li className="flex items-start gap-3"><Icon name="robot" size={26} stroke={2.4} className="mt-0.5 shrink-0" /><span><strong>No AI in the decision.</strong> Models never choose who was first.</span></li>
+              <li className="flex items-start gap-3"><Icon name="eye" size={26} stroke={2.4} className="mt-0.5 shrink-0" /><span><strong>Every drop publishes its record.</strong> A public fairness record lists every tap in the order the database committed it: time after the piece went live, who won, who waited, whose hold lapsed and who got the piece next. Names only, never phone numbers. <Link href="/s/kundnvi/d/HL89WL/record" className="font-semibold underline decoration-2">See the first real drop&apos;s record</Link>.</span></li>
             </ul>
             <Card draw tint="yellow" className="p-5">
               <Badge tint="card" icon="warning" size="sm">Test result on synthetic taps</Badge>
@@ -212,8 +214,8 @@ export default function HowItWorks() {
 
         {/* AI */}
         <section aria-labelledby="ai" className="mx-auto max-w-6xl px-4 py-12">
-          <H2 id="ai" hand="Three small helpers. None can touch a sale.">What AI does and never does</H2>
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
+          <H2 id="ai" hand="Four small helpers. None can touch a sale.">What AI does and never does</H2>
+          <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             {AI_JOBS.map((j, i) => (
               <Card key={j.title} as="article" flat alt={i === 1}>
                 <Icon name={j.icon} size={26} stroke={2.4} />

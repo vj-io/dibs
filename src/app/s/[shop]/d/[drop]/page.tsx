@@ -1,17 +1,11 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { cache } from "react";
 import { SaleRoomByCode } from "@/components/sale/SaleRoomByCode";
 import { appUrl } from "@/lib/server/queries";
-import { dropByCode, shareUrl } from "@/lib/server/share";
+import { shareUrl } from "@/lib/server/share";
+import { find } from "./find";
 import { istWhen } from "@/lib/when";
 
-// One lookup per request for the metadata and the 404 check, bounded to 3 s so a slow database never holds the
-// page: undefined = unknown (failed or slow), and the room resolves the link itself with its own retry screen.
-const find = cache((shop: string, code: string) => Promise.race([
-  dropByCode(shop, code).catch(() => undefined),
-  new Promise<undefined>((r) => setTimeout(() => r(undefined), 3000)),
-]));
 
 export async function generateMetadata({ params }: { params: Promise<{ shop: string; drop: string }> }): Promise<Metadata> {
   const { shop, drop } = await params;

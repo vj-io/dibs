@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Metadata } from "next";
 import { AppHeader, Card, EmptyState, Footer, Highlight, Icon, LinkButton, type IconName, type Tint } from "@/components/ui";
 import { rupees } from "@/lib/codec";
@@ -67,7 +68,7 @@ export default async function Impact() {
             The totals are read from the database each time this page loads.
           </p>
           <p className="mt-3 text-muted">
-            The first real drop ran on 20 Nov 2026: our own small shop sold three digital pieces (₹1 to ₹10) to three friends, each on their own phone.
+            The first real drop ran on 20 Nov 2026: our own small shop sold three digital pieces (₹1 to ₹10) to three friends, each on their own phone. <Link href="/s/kundnvi/d/HL89WL/record" className="font-semibold text-ink underline decoration-2">See its fairness record</Link>, every tap in the server&apos;s order.
           </p>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             <LinkButton href="/try" variant="primary" size="lg" icon="tap">Try the demo</LinkButton>
