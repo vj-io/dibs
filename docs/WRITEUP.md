@@ -22,11 +22,13 @@ Small Indian sellers run "first come, first served" drops in comments, DMs and W
 
 Dibs is a live sale room. The seller drops one piece at a time. Buyers tap **Dibs**. The server decides who was first, and the whole room sees it within about a second. Late buyers join a waitlist with a live position. If the winner does not pay, the next buyer is promoted automatically. Each winner gets one private order chat with the seller's team, with a UPI payment card and read receipts. Dibs never touches the money.
 
+- **Fairness record:** a public page per drop with every tap in the server's order (see section 5).
+- **Translate in the order chat:** Hindi, Hinglish and English, tap to show, labelled as AI.
 - **Seller inbox:** when a buyer writes in an order room, every seller page shows it (a count on Desk, a line with the buyer, order and text, an Open link, "(N)" in the tab title) and the Desk row gets a "new message" badge; opening the order clears it.
 - **Seller:** an account with an email and password (no email needed), a three-step start wizard (sign up at [tapdibs.vercel.app/seller](https://tapdibs.vercel.app/seller)), then the console: go live, drop next, claims ledger, room chat with mute and ban, team desk, dashboard, CSV export of a drop's orders, staff invite links. A share kit gives the drop link, announcement texts in English and Hinglish, a QR PNG and a rehearsal link into the demo room.
 - **Buyer:** one link from WhatsApp (with a generated preview image), a name and a phone number, one tap. Before the start: add-to-calendar and WhatsApp-share buttons.
 - **Shop club:** each shop can run a club on Nexconn community channels with #drops, #chat and #reviews. On in production.
-- **Judge mode ([/try](https://tapdibs.vercel.app/try)):** a private demo room with 40 labelled 🤖 bots, the promotion and the order room come about 25 seconds after the tap (about 34 seconds from the click; 25 simulated judges on this build, 22 to 27 s after the tap; bot holds 12 s, yours 90 s). The demo payment card reads "Demo shop: nothing to pay" and cannot be paid. Piece 2 is the last piece and stays winnable for 10 s; the demo then ends on a card with your own times (about a minute from the click on production, 20 Nov 2026). Be a buyer or be the seller.
+- **Judge mode ([/try](https://tapdibs.vercel.app/try)):** a private demo room with 40 labelled 🤖 bots. You land on the waitlist, watch one or two bots promoted ahead of you, and get the piece about 11 s after your tap (production check 20 Nov 2026: 9.1 s in Android Chrome, 11.5 s in iPhone Safari; bot holds 6 s, yours 90 s). The demo payment card reads "Demo shop: nothing to pay" and cannot be paid. Piece 2 is the last piece and stays winnable for 10 s; the demo then ends on a card with your own times and a link to the drop's fairness record, about 40 s from the click. Be a buyer or be the seller (the seller demo includes a buyer writing in Hinglish, so you see the seller inbox and Translate).
 - **Pages:** [/how-it-works](https://tapdibs.vercel.app/how-it-works) (the Nexconn feature map with live flag state), [/impact](https://tapdibs.vercel.app/impact) (real usage only), /health (staff only; shows the sale's health only).
 
 Stack: Next.js 16, TypeScript, Supabase Postgres in Mumbai, Vercel in Mumbai, Nexconn Chat Web SDK and Server API (Singapore), Vercel AI SDK.
@@ -66,7 +68,7 @@ A fair first tap has to be decided in one place. In Dibs that place is a Postgre
 - A win is a hold with a timer. When it ends, `sweep_drop` promotes the next waitlisted buyer in order. The unit never returns to stock in between. Running the sweep twice changes nothing.
 - Every change writes the claim, an audit row and an outbox row in one transaction. A failed chat send never undoes a sale.
 
-**Test evidence** (real Postgres, synthetic taps, not real buyers; 74 unit, 32 database, 28 API, 20 judge-mode and webhook, plus browser end-to-end flows for buyer, seller and club, and production checks in [tests/prod](https://github.com/vj-io/dibs/tree/main/tests/prod); `npm test`, `npm run test:db`, `npm run test:api`, `npm run test:sandbox`, `npm run test:e2e`):
+**Test evidence** (real Postgres, synthetic taps, not real buyers; 83 unit, 32 database, 29 API, 20 judge-mode and webhook, plus browser end-to-end flows for buyer, seller and club, and production checks in [tests/prod](https://github.com/vj-io/dibs/tree/main/tests/prod); `npm test`, `npm run test:db`, `npm run test:api`, `npm run test:sandbox`, `npm run test:e2e`):
 
 - 300 concurrent claims on 2 units: exactly 2 won, 20 waitlisted in commit order, 278 "waitlist full".
 - The same buyer tapping at once: one claim.
@@ -85,11 +87,13 @@ A fair first tap has to be decided in one place. In Dibs that place is a Postgre
 ## 5. Innovation
 
 - **Server-decided first tap.** Not "first comment", not a phone's clock. Everyone sees who won and how fast.
+- **Public fairness record for every drop.** `/s/<shop>/d/<code>/record` lists every tap in the server's commit order: time after the piece went live, who won, who waited and at which place, whose hold lapsed and who got the piece from the waitlist, and who paid. Names only, never phone numbers; demo bots are marked. It is linked from the end of every drop and the seller console, shareable on WhatsApp with its own preview card, so a buyer who lost can check why instead of arguing in DMs.
 - **Automatic waitlist promotion.** Bots and real buyers alike: hold ends, next in line gets it, a private alert says so.
 - **One order chat per winner.** A group channel for the buyer and the assigned staff member; the bot posts the cards from outside the room. Nothing gets lost in DMs. Orders go to the owner above a value the owner sets, otherwise to the staff member with the fewest open orders.
 - **Shop club.** A per-shop community channel: the seller's announcements, member chat and reviews from buyers with a paid order, each in its own subchannel. It turns one drop into a following. No real club has run yet.
 - **Scam shield.** Phone numbers, UPI IDs and payment links from anyone who is not staff are blocked in the sale room and logged without storing the text. The payment card says: pay only here, never to a number in chat.
 - **Judge mode with honest bots.** A judge can finish the whole loop alone. Bots are labelled, tap through the same claim function, never pay in the buyer demo, and never count in real numbers.
+- **Translated order chat.** Under every message from the other side the order chat offers Translate (Hindi, Hinglish and English, either way), labelled "Translated by AI"; the message itself never changes for anyone. Staff read English by default, a buyer whose phone is set to Hindi reads Hindi.
 - **AI as a helper, never the decider.** A typed "booked" gets a private one-tap prompt, never a claim. An answer bot uses only the shop's FAQ lines. AI never decides who was first, confirms a payment or changes stock.
 
 ## 6. Business and growth
@@ -100,7 +104,7 @@ A fair first tap has to be decided in one place. In Dibs that place is a Postgre
 
 **Go to market.** The seller's own WhatsApp group is the channel. Each drop gives a share link and QR code. Buyers open it, type a name and phone number, and are in. Every drop is a message the seller already sends.
 
-**First real drop, 20 Nov 2026.** The team's own small shop dropped three digital pieces (₹1 to ₹10, 2 units each) to three friends, each tapping on their own phone. All 6 units were claimed and paid by UPI (₹32, confirmed by the seller), 2 of them through the waitlist after the first winner let go. Tap to on-screen result on their phones: median 281 ms over 9 taps (165 to 447 ms; 3 taps reported 4G). The scam shield removed 2 room messages (a phone number and a UPI ID). Small, but real; live totals at https://tapdibs.vercel.app/impact.
+**First real drop, 20 Nov 2026.** The team's own small shop dropped three digital pieces (₹1 to ₹10, 2 units each) to three friends, each tapping on their own phone. All 6 units were claimed and paid by UPI (₹32, confirmed by the seller), 2 of them through the waitlist after the first winner let go. The seller sold and confirmed payment for all 6 orders within 5.5 minutes of the first piece going live (median 1.2 minutes from order to confirmed payment), from one screen; the drop's public fairness record shows every tap: https://tapdibs.vercel.app/s/kundnvi/d/HL89WL/record. Tap to on-screen result on their phones: median 281 ms over 9 taps (165 to 447 ms; 3 taps reported 4G). The scam shield removed 2 room messages (a phone number and a UPI ID). Small, but real; live totals at https://tapdibs.vercel.app/impact.
 
 **Next seller (a plan, not a result).** Kundanvi Jewels, a jewellery seller who already sells on WhatsApp, is the planned first drop by an outside seller.
 

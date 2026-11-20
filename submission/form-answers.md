@@ -25,22 +25,20 @@ Dibs: first tap wins
 First tap wins. Everyone sees it. Nobody gets lost in the DMs.
 ```
 
-**One-paragraph summary** (limit 2000; this is 1992)
+**One-paragraph summary** (limit 2000; this is 1914)
 
 ```
-Dibs is a live sale room for Indian sellers who sell on WhatsApp and Instagram. The seller drops one piece at a time. Buyers tap Dibs. The server, not a phone and not a chat message, decides who was first, and everyone in the room sees "Sold to Priya S. · 0.4 s" within about a second.
+Dibs is a live sale room for Indian sellers who sell on WhatsApp and Instagram. The seller drops one piece at a time; buyers tap Dibs. The server, not a phone or a chat message, decides who was first, and the whole room sees "Sold to Priya S. · 0.4 s" within about a second.
 
-Late buyers join a waitlist and see their position. If the winner does not pay, the next buyer is promoted automatically. Each winner gets one private order chat with the seller's team: order card, UPI payment card and read receipts. Dibs never handles money: buyers pay the seller's UPI directly and staff confirm.
+Late buyers join a waitlist with a live position; if the winner does not pay, the next buyer is promoted automatically. Each winner gets a private order chat (a Nexconn group channel) with order and UPI payment cards, read receipts and Translate (Hindi, Hinglish, English). Sellers see new buyer messages on every page. Dibs never handles money: buyers pay the seller's UPI and staff confirm.
 
-Fairness is enforced in Postgres. One transaction locks the stock row, so concurrent taps queue and are served in commit order; a unique index allows one active claim per buyer per piece. On production, 300 synthetic taps from one laptop inside 504 ms at 2 units gave 2 won, 200 waitlisted, 98 waitlist full, 0 errors, and all 8 database invariants held (19 Nov 2026). None of this is real buyers.
+Every drop publishes a public fairness record: every tap in the server's commit order, with times, waitlist moves and who got each piece, shareable on WhatsApp. Fairness is enforced in Postgres: one transaction locks the stock row, and a unique index allows one active claim per buyer per piece. 300 synthetic taps on production at 2 units: 2 won, 200 waitlisted, 98 waitlist full, 0 errors, all 8 invariants held; inside that burst the median tap took 2.75 s.
 
-For sellers: sign up with email and password, a three-step start wizard, a share kit (WhatsApp texts, QR), CSV export, staff invite links, and a shop club on Nexconn community channels (#drops, #chat, #reviews), live in production.
+For sellers: email sign-up, a three-step wizard, share kit, live console, team desk, CSV export, staff invites and a shop club on Nexconn community channels. A scam shield blocks phone numbers, UPI IDs and payment links from non-staff. AI only helps (typed-claim prompt, FAQ answers, scam check, translation); it never decides who was first, confirms a payment or changes stock.
 
-A scam shield blocks phone numbers, UPI IDs and payment links from non-staff. AI does three helper jobs only: a private one-tap prompt when a buyer types "booked", an answer bot that uses only the shop's FAQ, and unclear scam text. AI never decides who was first, confirms a payment or changes stock.
+Try it alone at /try: no sign-up, a private room with 40 demo buyers marked with a robot icon. You are promoted from the waitlist about 11 s after your tap and win piece 2 in under a minute.
 
-Try it alone in about a minute at /try: no sign-up, a private room with 40 demo buyers labelled with a robot icon. They tap through the same claim function and never pay; the demo payment reads "Demo shop: nothing to pay".
-
-Status: first real drop on 20 Nov 2026: 3 friends on their own phones, 6 paid orders (₹32 by UPI), 2 waitlist saves, median 281 ms tap to result. In the 300-tap burst the median was 2.75 s. No phone verification; no video calling.
+Traction: first real drop, 20 Nov 2026: 3 friends on their own phones, 6 orders sold and paid in 5.5 minutes (₹32 by UPI), 2 waitlist saves, median 281 ms tap to result. No phone verification; no video calling.
 ```
 
 ## 02 Proof of Nexconn integration
@@ -90,15 +88,18 @@ Dibs: first tap wins (Nexconn Build Challenge 2026, Team Kaching)
 ```
 Dibs is a live sale room for Indian sellers on WhatsApp and Instagram, built on the Nexconn Chat SDK. The seller drops one piece at a time, buyers tap Dibs, the server decides who was first, late buyers join a waitlist, and every winner gets a private order chat.
 
-Try it yourself (about a minute, no sign-up): https://tapdibs.vercel.app/try
+Try it yourself (under a minute, no sign-up): https://tapdibs.vercel.app/try
 Live app: https://tapdibs.vercel.app
 How it works and the Nexconn feature map: https://tapdibs.vercel.app/how-it-works
 Real usage (real drops and real buyers only): https://tapdibs.vercel.app/impact
+First real drop's fairness record: https://tapdibs.vercel.app/s/kundnvi/d/HL89WL/record
 Code: https://github.com/vj-io/dibs
 Nexconn platform findings: https://github.com/vj-io/dibs/blob/main/docs/NEXCONN_FINDINGS.md
 Production load test: https://github.com/vj-io/dibs/blob/main/docs/load-sim-results.md
 
-First real drop, 20 Nov 2026: our own small shop sold 3 digital pieces to 3 friends on their own phones. 6 paid orders (₹32 by UPI), 2 waitlist saves, median 281 ms tap to result.
+New since this video: a public fairness record for every drop (every tap in the server's order, shareable on WhatsApp), Translate in the order chat (Hindi, Hinglish, English), a seller inbox for new buyer messages, and a faster judge demo (promoted about 11 s after your tap).
+
+First real drop, 20 Nov 2026: our own small shop sold 3 digital pieces to 3 friends on their own phones. 6 orders sold and paid in 5.5 minutes (₹32 by UPI), 2 waitlist saves, median 281 ms tap to result.
 
 The buyers in this video's demo scenes are labelled bots or test buyers; the video was recorded before that first real drop.
 
