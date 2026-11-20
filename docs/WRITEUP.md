@@ -25,7 +25,7 @@ Dibs is a live sale room. The seller drops one piece at a time. Buyers tap **Dib
 - **Seller:** an account with an email and password (no email needed), a three-step start wizard (`/seller/start`), then the console: go live, drop next, claims ledger, room chat with mute and ban, team desk, dashboard, CSV export of a drop's orders, staff invite links. A share kit gives the drop link, announcement texts in English and Hinglish, a QR PNG and a rehearsal link into the demo room.
 - **Buyer:** one link from WhatsApp (with a generated preview image), a name and a phone number, one tap. Before the start: add-to-calendar and WhatsApp-share buttons.
 - **Shop club:** each shop can run a club on Nexconn community channels with #drops, #chat and #reviews. On in production.
-- **Judge mode (/try):** a private demo room with 40 labelled 🤖 bots, the promotion and the order room come about 25 seconds after the tap (about 34 seconds from the click; 25 simulated judges on this build, 22 to 27 s after the tap; bot holds 12 s, yours 90 s). The demo payment card reads "Demo shop: nothing to pay" and cannot be paid. Be a buyer or be the seller.
+- **Judge mode (/try):** a private demo room with 40 labelled 🤖 bots, the promotion and the order room come about 25 seconds after the tap (about 34 seconds from the click; 25 simulated judges on this build, 22 to 27 s after the tap; bot holds 12 s, yours 90 s). The demo payment card reads "Demo shop: nothing to pay" and cannot be paid. Piece 2 is the last piece and stays winnable for 10 s; the demo then ends on a card with your own times (about a minute from the click on production, 20 Nov 2026). Be a buyer or be the seller.
 - **Pages:** /how-it-works (the Nexconn feature map with live flag state), /impact (real usage only), /health (staff only; shows the sale's health only).
 
 Stack: Next.js 16, TypeScript, Supabase Postgres in Mumbai, Vercel in Mumbai, Nexconn Chat Web SDK and Server API (Singapore), Vercel AI SDK.
@@ -65,7 +65,7 @@ A fair first tap has to be decided in one place. In Dibs that place is a Postgre
 - A win is a hold with a timer. When it ends, `sweep_drop` promotes the next waitlisted buyer in order. The unit never returns to stock in between. Running the sweep twice changes nothing.
 - Every change writes the claim, an audit row and an outbox row in one transaction. A failed chat send never undoes a sale.
 
-**Test evidence** (real Postgres, synthetic taps, not real buyers; 66 unit, 32 database, 21 API, 17 judge-mode and webhook, plus browser end-to-end flows for buyer, seller and club, and production checks in `tests/prod`; `npm test`, `npm run test:db`, `npm run test:api`, `npm run test:sandbox`, `npm run test:e2e`):
+**Test evidence** (real Postgres, synthetic taps, not real buyers; 74 unit, 32 database, 27 API, 19 judge-mode and webhook, plus browser end-to-end flows for buyer, seller and club, and production checks in `tests/prod`; `npm test`, `npm run test:db`, `npm run test:api`, `npm run test:sandbox`, `npm run test:e2e`):
 
 - 300 concurrent claims on 2 units: exactly 2 won, 20 waitlisted in commit order, 278 "waitlist full".
 - The same buyer tapping at once: one claim.
