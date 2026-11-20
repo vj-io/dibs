@@ -138,6 +138,8 @@ export type DeskOrder = {
   orderId: string; orderNo: number; state: OrderState; buyer: string; phone: string | null; item: string; variantLabel: string;
   amountPaise: number; assignedTo: { staffId: string; displayName: string } | null; expiresAt: string | null; createdAt: string;
   dropCode: string; utr: string | null; nexconnGroupId: string;
+  /** buyer messages since the team last opened the order (seller inbox) */
+  unread: number;
 };
 export type Desk = {
   deskGroupId: string | null; me: string;

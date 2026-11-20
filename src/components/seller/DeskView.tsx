@@ -40,6 +40,8 @@ export function DeskView() {
     .then((d) => { setDesk(d); setErr(null); }, (e) => setErr(errMsg(e))), [mine, waiting]);
   useEffect(() => { loadRef.current = () => void load(); }, [load]);
   useEffect(() => { void load(); const t = setInterval(() => void load(), 10_000); return () => clearInterval(t); }, [load]);
+  // an open order room marked its messages read (OrderRoom fires this): drop the badge now, not at the next poll
+  useEffect(() => { const f = () => void load(); window.addEventListener("dibs:inbox", f); return () => window.removeEventListener("dibs:inbox", f); }, [load]);
   useEffect(() => { api("GET /api/drops").then((r) => setDrops(r.drops), () => setDrops([])); }, []);
 
   const deskId = desk?.deskGroupId ?? me.shop.deskGroupId;
@@ -109,6 +111,7 @@ export function DeskView() {
                           <span className="block truncate font-semibold">{o.buyer} · {o.item}</span>
                           <span className="block truncate text-[0.95rem] text-muted">{o.variantLabel} · drop {o.dropCode}{o.assignedTo ? ` · ${o.assignedTo.staffId === me.staffId ? "you" : o.assignedTo.displayName}` : " · unassigned"}{o.utr ? ` · UTR ${o.utr}` : ""}{o.utr?.startsWith("DEMO-UTR-") ? " · 🤖 demo payment" : ""}</span>
                         </span>
+                        {o.unread > 0 && <Badge size="sm" tint="pink" data-testid="desk-unread">{o.unread} new message{o.unread === 1 ? "" : "s"}</Badge>}
                         <Price paise={o.amountPaise} size="sm" />
                         {o.state === "held" && o.expiresAt && <Countdown size="sm" announce={false} expiresAt={o.expiresAt} onDone={() => setTimeout(() => loadRef.current(), 800)} />}
                       </button>

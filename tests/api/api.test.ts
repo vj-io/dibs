@@ -325,8 +325,11 @@ describe("Dibs API", () => {
     ok(await b2.c.post(`/api/orders/${orderId}/seen`), 403); // the order's buyer is not staff
     ok(await B.c.post(`/api/orders/${orderId}/seen`), 403);
     assert.equal((await A.c.get("/api/seller/inbox")).body.items.length, 1, "refused calls cleared nothing");
+    const deskUnread = async () => Object.values((await A.c.get("/api/desk")).body.orders as Record<string, J[]>).flat().find((o) => o.orderId === orderId)?.unread;
+    assert.equal(await deskUnread(), 1, "the desk row carries the count");
     ok(await A.c.post(`/api/orders/${orderId}/seen`));
     assert.deepEqual((await A.c.get("/api/seller/inbox")).body.items, []);
+    assert.equal(await deskUnread(), 0);
   });
 
   test("moderation: ban blocks claims and joining; unban restores", async () => {

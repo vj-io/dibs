@@ -30,7 +30,7 @@ export const GET = route("GET /api/desk", async (req: Request) => {
              pv.label as "variantLabel", o.amount_paise::float8 as "amountPaise",
              case when st.id is null then null else json_build_object('staffId', st.id, 'displayName', st.display_name) end as "assignedTo",
              case when o.state = 'held' and c.state = 'held' then c.expires_at end as "expiresAt", o.created_at as "createdAt",
-             d.code as "dropCode", o.utr, o.nexconn_group_id as "nexconnGroupId",
+             d.code as "dropCode", o.utr, o.nexconn_group_id as "nexconnGroupId", o.buyer_unread as unread,
              row_number() over (partition by o.state order by o.created_at desc) as rn
         from orders o join claims c on c.id = o.claim_id join drop_items i on i.id = c.drop_item_id
         join products p on p.id = i.product_id join product_variants pv on pv.id = c.variant_id
