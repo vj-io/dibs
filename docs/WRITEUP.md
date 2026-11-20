@@ -22,6 +22,7 @@ Small Indian sellers run "first come, first served" drops in comments, DMs and W
 
 Dibs is a live sale room. The seller drops one piece at a time. Buyers tap **Dibs**. The server decides who was first, and the whole room sees it within about a second. Late buyers join a waitlist with a live position. If the winner does not pay, the next buyer is promoted automatically. Each winner gets one private order chat with the seller's team, with a UPI payment card and read receipts. Dibs never touches the money.
 
+- **Seller inbox:** when a buyer writes in an order room, every seller page shows it (a count on Desk, a line with the buyer, order and text, an Open link, "(N)" in the tab title) and the Desk row gets a "new message" badge; opening the order clears it.
 - **Seller:** an account with an email and password (no email needed), a three-step start wizard (sign up at [tapdibs.vercel.app/seller](https://tapdibs.vercel.app/seller)), then the console: go live, drop next, claims ledger, room chat with mute and ban, team desk, dashboard, CSV export of a drop's orders, staff invite links. A share kit gives the drop link, announcement texts in English and Hinglish, a QR PNG and a rehearsal link into the demo room.
 - **Buyer:** one link from WhatsApp (with a generated preview image), a name and a phone number, one tap. Before the start: add-to-calendar and WhatsApp-share buttons.
 - **Shop club:** each shop can run a club on Nexconn community channels with #drops, #chat and #reviews. On in production.
@@ -48,7 +49,7 @@ Everything live runs on Nexconn. The database decides; Nexconn carries what peop
 | Server-side message delete | Scam shield removes a message for everyone | Proven live | About 120 ms |
 | Online status | Route orders to staff who are online | Proven live | 128 ms |
 | Community channel | Shop club with #drops, #chat, #reviews | Proven live 19 Nov 2026; on in production | 14/14 browser checks; bot to member delivery 10/10, median 213 ms; non-members receive nothing. Production club flow: 6/6 browser steps, 0 errors |
-| `message:send` webhook | Typed-claim helper, answer bot, scam shield | Proven live on production (Console set to our URL) | Manual run: a UPI id was removed for everyone within about 5 s; the answer bot replied from the FAQ |
+| `message:send` webhook | Typed-claim helper, answer bot, scam shield, seller inbox (order-room messages) | Proven live on production (Console set to our URL) | Manual run: a UPI id was removed for everyone within about 5 s; the answer bot replied from the FAQ; a buyer's order-room text was counted for the seller within seconds (20 Nov 2026) |
 | Pre-message callback | Block scams before delivery | Not available on this plan (greyed out in the Console); flag off | The app refuses before sending; the webhook removes after delivery |
 | Call SDK | Video viewing | Behind flag (off) | Not tested; not built |
 
@@ -65,7 +66,7 @@ A fair first tap has to be decided in one place. In Dibs that place is a Postgre
 - A win is a hold with a timer. When it ends, `sweep_drop` promotes the next waitlisted buyer in order. The unit never returns to stock in between. Running the sweep twice changes nothing.
 - Every change writes the claim, an audit row and an outbox row in one transaction. A failed chat send never undoes a sale.
 
-**Test evidence** (real Postgres, synthetic taps, not real buyers; 74 unit, 32 database, 27 API, 19 judge-mode and webhook, plus browser end-to-end flows for buyer, seller and club, and production checks in [tests/prod](https://github.com/vj-io/dibs/tree/main/tests/prod); `npm test`, `npm run test:db`, `npm run test:api`, `npm run test:sandbox`, `npm run test:e2e`):
+**Test evidence** (real Postgres, synthetic taps, not real buyers; 74 unit, 32 database, 28 API, 20 judge-mode and webhook, plus browser end-to-end flows for buyer, seller and club, and production checks in [tests/prod](https://github.com/vj-io/dibs/tree/main/tests/prod); `npm test`, `npm run test:db`, `npm run test:api`, `npm run test:sandbox`, `npm run test:e2e`):
 
 - 300 concurrent claims on 2 units: exactly 2 won, 20 waitlisted in commit order, 278 "waitlist full".
 - The same buyer tapping at once: one claim.
