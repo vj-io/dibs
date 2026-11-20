@@ -70,7 +70,7 @@ Small Indian sellers run "first come, first served" drops in comments, DMs and W
 4. A winner gets an order chat with a UPI payment card (a button on phones, a QR code on laptops). Pay in your UPI app, tap **I've paid**, add the UTR number if you want. Staff confirm.
 5. A waitlisted buyer is promoted when a hold ends and is told in a personal alert.
 
-**Also built.** Share previews: a drop link posted in WhatsApp or Instagram shows a generated preview image (`opengraph-image` and `twitter-image` per drop). Tap speed: each buyer's browser reports how long the tap took to show a result (migration `0011_tap_metrics.sql`; no names, phones or buyer ids stored; demo taps are kept out of the default summary). No real-buyer numbers exist yet, because no real drop has run.
+**Also built.** Seller inbox: when a buyer writes in an order room, every seller page shows it (a count on Desk, a line with the buyer, order, item and text, an Open link, and "(N)" in the tab title); opening the order clears it. The `message:send` webhook counts group-channel messages from the order's own buyer (checked live on 20 Nov 2026). Share previews: a drop link posted in WhatsApp or Instagram shows a generated preview image (`opengraph-image` and `twitter-image` per drop). Tap speed: each buyer's browser reports how long the tap took to show a result (migration `0011_tap_metrics.sql`; no names, phones or buyer ids stored; demo taps are kept out of the default summary). No real-buyer numbers exist yet, because no real drop has run.
 
 Dibs does not take or hold money. The buyer pays the seller directly by UPI. Dibs records only the seller's confirmation.
 
