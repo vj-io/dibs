@@ -440,6 +440,7 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
     slowServer,
   }) : null;
   const shareUrl = typeof window === "undefined" ? "" : `${window.location.origin}/s/${state.shop.slug}/d/${state.code}`;
+  const recordHref = `/s/${state.shop.slug}/d/${state.code}/record`;
   const smallPhoto = sandbox && !preview;
 
   const left = (
@@ -483,12 +484,13 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
       )}
 
       {state.status === "ended" && (
-        sandbox ? <EndCard facts={demoFacts(me?.holds ?? [], wonEarlier)}
+        sandbox ? <EndCard facts={demoFacts(me?.holds ?? [], wonEarlier)} record={recordHref}
           pay={me?.holds.filter((h) => h.state === "held").sort((a, b) => b.position - a.position)[0] ?? null} /> : (
           <Box tint="grey" className="flex flex-col gap-2">
             <StatePill state="ended" />
             <h1 className="text-3xl">That&apos;s a wrap</h1>
             <p>{me && (me.holds.length > 0) ? "Here's what you got. Pay for any held piece before its timer runs out." : "This drop has ended. Thanks for coming!"}</p>
+            <LinkButton href={recordHref} variant="ghost" icon="shield" className="self-start" data-testid="record-link">See the fairness record</LinkButton>
           </Box>
         )
       )}
@@ -792,7 +794,7 @@ function ResultPanel({ wonHere, result, latencyRef, opening, openingSlow, onStay
 }
 
 /** The demo's last card: your times, then where to go next. Paying for a piece still held is offered, not asked. */
-function EndCard({ facts, pay }: { facts: string[]; pay: Hold | null }) {
+function EndCard({ facts, pay, record }: { facts: string[]; pay: Hold | null; record: string }) {
   return (
     <Box tint="lime" className="flex flex-col gap-3 overflow-hidden" data-testid="demo-end">
       <Burst className="absolute -right-4 -top-8 size-24" />
@@ -808,6 +810,7 @@ function EndCard({ facts, pay }: { facts: string[]; pay: Hold | null }) {
       <div className="flex flex-wrap gap-2">
         <LinkButton href="/try?role=seller" icon="users">Be the seller</LinkButton>
         {pay && <LinkButton href={`/o/${pay.orderId}`} icon="rupee" variant="ghost">Pay for #{pay.position} (optional)</LinkButton>}
+        <LinkButton href={record} icon="shield" variant="ghost" data-testid="record-link">See the fairness record</LinkButton>
         <LinkButton href="/how-it-works" variant="ghost">How it works</LinkButton>
       </div>
     </Box>

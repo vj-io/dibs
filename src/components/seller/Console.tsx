@@ -208,6 +208,7 @@ export function Console({ dropId }: { dropId: string }) {
               <div className="flex flex-wrap gap-2">
                 <LinkButton href={`/seller/dashboard?drop=${dropId}`} icon="sparkle">See the results</LinkButton>
                 <a href={`/api/exports/orders.csv?dropId=${dropId}`} download className={buttonClasses("ghost")}><Icon name="arrowRight" size={20} className="rotate-90" />Download orders (CSV)</a>
+                <LinkButton href={`/s/${state.shop.slug}/d/${state.code}/record`} variant="ghost" icon="shield">See the fairness record</LinkButton>
               </div>
             </Card>
           )}

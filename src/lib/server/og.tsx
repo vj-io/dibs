@@ -135,6 +135,26 @@ export function DropCard({ d, photo, now }: { d: SharedDrop; photo: string | nul
   );
 }
 
+/** The fairness record's card: drop, headline ("Fair drop: 3 pieces · 9 taps · fastest tap 3.1 s") and what decided the order. */
+export function RecordCard({ d, headline }: { d: SharedDrop; headline: string }) {
+  return (
+    <div style={{ ...grid, width: "100%", height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between", padding: 56 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <Logo size={52} />
+        {d.isSandbox && <Stamp size={30}>DEMO ROOM</Stamp>}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "flex", fontFamily: HAND, fontSize: 40, color: MUTED, whiteSpace: "nowrap" }}>{clip(`${d.shop.name} · ${d.title}`, 48)}</div>
+        <div style={{ display: "flex", marginTop: 8, fontFamily: HEAD, fontWeight: 800, fontSize: 64, lineHeight: 1.08, color: INK, letterSpacing: -1.5 }}>{headline}</div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", fontFamily: HAND, fontSize: 32, color: INK, maxWidth: 720 }}>Times are the server&apos;s commit times. The database decided the order.</div>
+        <Stamp>FAIRNESS RECORD</Stamp>
+      </div>
+    </div>
+  );
+}
+
 export async function ogImage(el: React.ReactElement, cacheSeconds?: number) {
   return new ImageResponse(el, {
     ...OG_SIZE,
