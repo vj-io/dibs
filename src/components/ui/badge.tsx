@@ -3,11 +3,11 @@ import { cx, TINT_BG, TINT_INK, type Tint } from "./cx";
 import { Icon, type IconName } from "./icons";
 
 /** Small label: a sticky-note tint, an icon in the tint's ink, and an ink word. */
-export function Badge({ tint = "card", icon, children, className, size = "md" }: {
-  tint?: Tint; icon?: IconName; children: ReactNode; className?: string; size?: "sm" | "md";
+export function Badge({ tint = "card", icon, children, className, size = "md", "data-testid": testId }: {
+  tint?: Tint; icon?: IconName; children: ReactNode; className?: string; size?: "sm" | "md"; "data-testid"?: string;
 }) {
   return (
-    <span className={cx(
+    <span data-testid={testId} className={cx(
       "inline-flex max-w-full items-center gap-1 whitespace-nowrap rounded-pill border-2 border-ink font-semibold leading-none text-ink",
       size === "sm" ? "px-2 py-1 text-sm" : "px-2.5 py-1.5 text-[0.95rem]",
       TINT_BG[tint], className,

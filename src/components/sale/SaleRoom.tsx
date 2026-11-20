@@ -414,7 +414,9 @@ export function SaleRoom({ dropId, preview, initial }: { dropId: string; preview
   // the buyer demo drops pieces 1 and 2 only (bots.ts): later pieces would read "Next" for ever
   const upcoming = state.items.filter((i) => !sandbox || preview || i.position <= 2).sort((a, b) => a.position - b.position);
   const startsIn = Math.max(0, Date.parse(state.startsAt) - now);
-  const firstIn = now ? startsIn : 0; // as a number of seconds on screen (now = 0 in the server render)
+  // as a number of seconds on screen (now = 0 in the server render). The buyer demo opens with a 12 s fallback start that
+  // its first room tick moves to 3 s (bots.ts): a countdown would jump 12, 11, 3, so it shows "about to drop" until then.
+  const firstIn = now && !(sandbox && startsIn > 4000) ? startsIn : 0;
   const dropped = state.items.some((i) => i.state !== "queued");
   const wide = !preview; // the two-column desktop layout (never inside the seller's phone preview)
   const showBar = !!live && state.status !== "ended";

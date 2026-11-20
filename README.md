@@ -164,7 +164,7 @@ Stack: Next.js 16 (App Router), TypeScript, Tailwind v4, Supabase Postgres (engi
 
 - Bots exist only in demo drops (`is_sandbox = true`). There are 40 (`demo_bot_01` to `demo_bot_40`). They are labelled 🤖 and "demo" everywhere, and a banner says so on every demo screen.
 - Bots tap through the same `claim_dibs` function as real buyers and win or lose honestly. Only their delays are scripted.
-- In the buyer demo, bots never pay. Their holds always expire after 12 seconds in the demo (a real shop's hold is set by the seller, 10 minutes by default). That is how a judge sees a promotion. In the seller demo, a few bots tap "I've paid" with a demo UTR so the judge has orders to confirm.
+- In the buyer demo, bots never pay. Their holds always expire after 6 seconds in the buyer demo (12 in the seller demo) (a real shop's hold is set by the seller, 10 minutes by default). That is how a judge sees a promotion. In the seller demo, a few bots tap "I've paid" with a demo UTR so the judge has orders to confirm.
 - Bots cannot claim in real drops (a test checks this). Demo data is excluded from `/impact` and the dashboard totals (a test checks this).
 - Demo drops come from a pool of 16 reusable open channels, to stay under Nexconn's open-channel limit. A room in use is never recycled; when all are busy the page waits and retries.
 - Each visitor gets fresh demo staff. Demo shops are read-only (settings and products) for visitors. A human gets 90 seconds to pay and bots get 12; piece 2 goes live only after the visitor is back in the room. These timings are disclosed on `/try` and `/how-it-works`.
