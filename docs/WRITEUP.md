@@ -2,7 +2,8 @@
 
 First tap ==wins==. Everyone sees it. Nobody gets lost in the DMs.
 
-> **Live app:** https://tapdibs.vercel.app · judge demo at https://tapdibs.vercel.app/try (no sign-up) · demo video: VIDEO_URL
+> **Live app:** https://tapdibs.vercel.app · judge demo at https://tapdibs.vercel.app/try (no sign-up)
+> **Demo video:** https://youtu.be/rBW5mbluSdg (3:03)
 > **Code:** https://github.com/vj-io/dibs (public)
 > **Nexconn App Key:** [[qd46yzrfq1obf]] (Singapore data center; the live app uses this key)
 > **Track:** Marketplace & Support · **Team Kaching:** Vaibhav Jangid

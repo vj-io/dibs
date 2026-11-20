@@ -14,7 +14,7 @@ Built for the Nexconn Build Challenge 2026, track **Marketplace & Support**. Tea
 | Judge demo | https://tapdibs.vercel.app/try |
 | Feature map | https://tapdibs.vercel.app/how-it-works |
 | Real usage | https://tapdibs.vercel.app/impact (real drops and real buyers only; first real drop 20 Nov 2026) |
-| Demo video | https://youtu.be/Thbq509PAsA (3:27) |
+| Demo video | https://youtu.be/rBW5mbluSdg (3:03) |
 | Code | https://github.com/vj-io/dibs (public) |
 | Nexconn App Key | `qd46yzrfq1obf` (public by design; Singapore data center) |
 | Write-up PDF | `submission/Dibs-writeup.pdf` |

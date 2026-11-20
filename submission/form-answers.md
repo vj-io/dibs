@@ -28,17 +28,33 @@ First tap wins. Everyone sees it. Nobody gets lost in the DMs.
 **One-paragraph summary** (limit 2000; this is 1914)
 
 ```
-Dibs is a live sale room for Indian sellers who sell on WhatsApp and Instagram. The seller drops one piece at a time; buyers tap Dibs. The server, not a phone or a chat message, decides who was first, and the whole room sees "Sold to Priya S. · 0.4 s" within about a second.
+Dibs is a live sale room for Indian sellers on WhatsApp and Instagram, built on the Nexconn Chat SDK. The seller drops one piece at a time, buyers tap Dibs, the server decides who was first, late buyers join a waitlist, and every winner gets a private order chat.
 
-Late buyers join a waitlist with a live position; if the winner does not pay, the next buyer is promoted automatically. Each winner gets a private order chat (a Nexconn group channel) with order and UPI payment cards, read receipts and Translate (Hindi, Hinglish, English). Sellers see new buyer messages on every page. Dibs never handles money: buyers pay the seller's UPI and staff confirm.
+Try it yourself (under a minute, no sign-up): https://tapdibs.vercel.app/try
+Live app: https://tapdibs.vercel.app
+How it works and the Nexconn feature map: https://tapdibs.vercel.app/how-it-works
+Real usage (real drops and real buyers only): https://tapdibs.vercel.app/impact
+First real drop's fairness record: https://tapdibs.vercel.app/s/kundnvi/d/HL89WL/record
+Code: https://github.com/vj-io/dibs
+Nexconn platform findings: https://github.com/vj-io/dibs/blob/main/docs/NEXCONN_FINDINGS.md
+Production load test: https://github.com/vj-io/dibs/blob/main/docs/load-sim-results.md
 
-Every drop publishes a public fairness record: every tap in the server's commit order, with times, waitlist moves and who got each piece, shareable on WhatsApp. Fairness is enforced in Postgres: one transaction locks the stock row, and a unique index allows one active claim per buyer per piece. 300 synthetic taps on production at 2 units: 2 won, 200 waitlisted, 98 waitlist full, 0 errors, all 8 invariants held; inside that burst the median tap took 2.75 s.
+Chapters
+0:00 The problem
+0:12 Meet Dibs
+0:25 Be a buyer: the judge demo and the scam shield
+1:12 The seller side: inbox and Translate
+1:29 One drop, both sides
+1:55 Four phones, one piece
+2:10 The first real drop and its fairness record
+2:31 Load test and Nexconn
+2:50 Try it
 
-For sellers: email sign-up, a three-step wizard, share kit, live console, team desk, CSV export, staff invites and a shop club on Nexconn community channels. A scam shield blocks phone numbers, UPI IDs and payment links from non-staff. AI only helps (typed-claim prompt, FAQ answers, scam check, translation); it never decides who was first, confirms a payment or changes stock.
+First real drop, 20 Nov 2026: our own small shop sold 3 digital pieces to 3 friends on their own phones. 6 orders sold and paid in 5.5 minutes (₹32 by UPI), 2 waitlist saves, median 281 ms tap to result.
 
-Try it alone at /try: no sign-up, a private room with 40 demo buyers marked with a robot icon. You are promoted from the waitlist about 11 s after your tap and win piece 2 in under a minute.
+The demo scenes use bots (each marked with a robot) or test buyers on a test shop. Only the first-real-drop scene shows real buyers.
 
-Traction: first real drop, 20 Nov 2026: 3 friends on their own phones, 6 orders sold and paid in 5.5 minutes (₹32 by UPI), 2 waitlist saves, median 281 ms tap to result. No phone verification; no video calling.
+Team Kaching · Nexconn Build Challenge 2026 · Marketplace & Support
 ```
 
 ## 02 Proof of Nexconn integration
@@ -77,7 +93,7 @@ Judge demo to mention in any "how to test" field: `https://tapdibs.vercel.app/tr
 https://github.com/vj-io/dibs
 ```
 
-**Demo video**: the form accepts YouTube, Loom, Google Drive or Vimeo, and anyone with the link must be able to watch. File: `submission/video/dibs-demo.mp4` (3:26.6, 66 MB, 1080p). Script: `submission/demo-video-script.md`.
+**Demo video**: the form accepts YouTube, Loom, Google Drive or Vimeo, and anyone with the link must be able to watch. File: `submission/video/dibs-demo.mp4` (3:02.8, 58 MB, 1080p). Script: `submission/demo-video-script.md`.
 
 Upload it (YouTube: visibility **Unlisted**, not Private; Drive: Share → General access → **Anyone with the link**). Then open the link in a private window to check it plays without signing in. Suggested YouTube title and description:
 
@@ -107,10 +123,10 @@ Team Kaching · Nexconn Build Challenge 2026 · Marketplace & Support
 ```
 
 ```
-https://youtu.be/Thbq509PAsA
+https://youtu.be/rBW5mbluSdg
 ```
 
-Uploaded 20 Nov 2026 to the Vaibhav Jangid channel as Unlisted; checked that it plays without signing in. Description updated the same day (above) with the first real drop and direct links. YouTube makes external links clickable only after the channel's one-time verification.
+Uploaded 20 Nov 2026 to the Vaibhav Jangid channel as Unlisted (v7, 3:03: the faster buyer demo, the seller inbox and Translate, the first real drop and its fairness record). The earlier 3:27 cut, https://youtu.be/Thbq509PAsA, stays up with a pointer to this one. YouTube makes external links clickable only after the channel's one-time verification.
 
 ## 04 Write-up
 
