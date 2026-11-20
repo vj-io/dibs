@@ -1,6 +1,6 @@
 # Submission form answers: Dibs (copy and paste)
 
-**Submitted 20 Nov 2026, 11:20 IST** (track Marketplace & Support). Updated the same day: new write-up PDF (section 8 now describes the team's work) and the traction proof link. Edits are allowed until 22 Nov 2026, 23:59 IST; judges see the version saved at the deadline.
+**Submitted 20 Nov 2026, 11:20 IST** (track Marketplace & Support). Updated the same day: new write-up PDF (section 8 describes the team's work), the traction proof link, then the first real drop's numbers (3 active users). Edits are allowed until 22 Nov 2026, 23:59 IST; judges see the version saved at the deadline.
 
 Form: https://reskilll.com/hack/nexconn/dashboard/submit
 Team: **Kaching** (Vaibhav Jangid). One submission per team. Deadline 22 Nov 2026, 23:59 IST.
@@ -25,7 +25,7 @@ Dibs: first tap wins
 First tap wins. Everyone sees it. Nobody gets lost in the DMs.
 ```
 
-**One-paragraph summary** (limit 2000; this is 1988)
+**One-paragraph summary** (limit 2000; this is 1992)
 
 ```
 Dibs is a live sale room for Indian sellers who sell on WhatsApp and Instagram. The seller drops one piece at a time. Buyers tap Dibs. The server, not a phone and not a chat message, decides who was first, and everyone in the room sees "Sold to Priya S. · 0.4 s" within about a second.
@@ -34,13 +34,13 @@ Late buyers join a waitlist and see their position. If the winner does not pay, 
 
 Fairness is enforced in Postgres. One transaction locks the stock row, so concurrent taps queue and are served in commit order; a unique index allows one active claim per buyer per piece. On production, 300 synthetic taps from one laptop inside 504 ms at 2 units gave 2 won, 200 waitlisted, 98 waitlist full, 0 errors, and all 8 database invariants held (19 Nov 2026). None of this is real buyers.
 
-For sellers: sign up with email and password, a three-step start wizard, a share kit (English and Hinglish texts, QR PNG, rehearsal link), CSV export, staff invite links, and a shop club on Nexconn community channels (#drops, #chat, #reviews), live in production.
+For sellers: sign up with email and password, a three-step start wizard, a share kit (WhatsApp texts, QR), CSV export, staff invite links, and a shop club on Nexconn community channels (#drops, #chat, #reviews), live in production.
 
 A scam shield blocks phone numbers, UPI IDs and payment links from non-staff. AI does three helper jobs only: a private one-tap prompt when a buyer types "booked", an answer bot that uses only the shop's FAQ, and unclear scam text. AI never decides who was first, confirms a payment or changes stock.
 
 Try it alone in about a minute at /try: no sign-up, a private room with 40 demo buyers labelled with a robot icon. They tap through the same claim function and never pay; the demo payment reads "Demo shop: nothing to pay".
 
-Status: no real drop has run yet, so 0 real users. A single warm tap takes about 150 to 220 ms from a laptop; in the 300-tap burst the median was 2.75 s. No phone verification; no video calling.
+Status: first real drop on 20 Nov 2026: 3 friends on their own phones, 6 paid orders (₹32 by UPI), 2 waitlist saves, median 281 ms tap to result. In the 300-tap burst the median was 2.75 s. No phone verification; no video calling.
 ```
 
 ## 02 Proof of Nexconn integration
@@ -108,7 +108,7 @@ Upload `submission/Dibs-writeup.pdf` (4 pages, rebuilt 20 Nov 2026 with `node su
 
 ## 05 Traction (optional, significant bonus)
 
-The rules: "Proof that real people use your app ... Traction gives a significant bonus." Judges count early users as active users on Nexconn. Today the honest number is 0, so the fastest real traction before 22 Nov is one small real drop:
+The rules: "Proof that real people use your app ... Traction gives a significant bonus." Judges count early users as active users on Nexconn. The first real drop ran on 20 Nov 2026 (3 real buyers). More real traction before 22 Nov comes the same way:
 
 1. Sign up at https://tapdibs.vercel.app/seller (email and password, no email step), finish the 3-step wizard with your own UPI ID, and add 2 to 4 real pieces (they can be small, cheap items; buyers pay you by UPI only if they really want them).
 2. Schedule the drop, open the share kit and send its WhatsApp text (English or Hinglish) to a group of friends, family or a seller you know. Ask them to open the link on their own phones at the start time.
@@ -124,9 +124,15 @@ Never count the demo bots, the test scripts or ClarityLoop's traffic on the shar
 https://tapdibs.vercel.app/impact
 ```
 
-The page counts real drops and real buyers only (demo rooms, bots and test scripts never count), so the same link shows real numbers after the first real drop. Today it says no real drop has run yet.
+The page counts real drops and real buyers only (demo rooms, bots and test scripts never count). After the first real drop (20 Nov 2026) it shows 1 drop, 3 buyers, 8 claims won, 6 paid orders, ₹32 paid, 2 waitlist saves.
 
-**Active users** (whole number, optional): left blank. The honest number today is **0 real users**. Judges count active users on the Nexconn app through the App Key; ClarityLoop shares this Nexconn app, so the Console may show its users and test traffic too. Do not claim them as Dibs users. After a real drop, enter the buyer count from `/impact`, not the raw Console count.
+**Active users** (whole number, optional)
+
+```
+3
+```
+
+The three buyers of the first real drop (20 Nov 2026): friends of the team, each on their own phone, confirmed by the team as three different people. Judges count active users on the Nexconn app through the App Key; ClarityLoop shares this Nexconn app, so the Console may show its users and test traffic too. Never claim those as Dibs users; use the `/impact` buyer count.
 
 ## 06 Prior work
 

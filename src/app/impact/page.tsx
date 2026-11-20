@@ -66,6 +66,9 @@ export default async function Impact() {
             Paid orders and paid value count orders a seller has confirmed as paid or shipped. A waitlist save is a paid order that went to a buyer promoted off the waitlist after the first winner did not pay.
             The totals are read from the database each time this page loads.
           </p>
+          <p className="mt-3 text-muted">
+            The first real drop ran on 20 Nov 2026: our own small shop sold three digital pieces (₹1 to ₹10) to three friends, each on their own phone.
+          </p>
           <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             <LinkButton href="/try" variant="primary" size="lg" icon="tap">Try the demo</LinkButton>
             <LinkButton href="/how-it-works" variant="ghost" size="lg">How it works</LinkButton>

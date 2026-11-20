@@ -99,21 +99,23 @@ A fair first tap has to be decided in one place. In Dibs that place is a Postgre
 
 **Go to market.** The seller's own WhatsApp group is the channel. Each drop gives a share link and QR code. Buyers open it, type a name and phone number, and are in. Every drop is a message the seller already sends.
 
-**First seller (a plan, not a result).** Kundanvi Jewels, a jewellery seller who already sells on WhatsApp, is the planned first real drop. **No real drop has run yet.** Real Dibs buyers on our Nexconn App Key: 0 until that drop.
+**First real drop, 20 Nov 2026.** The team's own small shop dropped three digital pieces (₹1 to ₹10, 2 units each) to three friends, each tapping on their own phone. All 6 units were claimed and paid by UPI (₹32, confirmed by the seller), 2 of them through the waitlist after the first winner let go. Tap to on-screen result on their phones: median 281 ms over 9 taps (165 to 447 ms; 3 taps reported 4G). The scam shield removed 2 room messages (a phone number and a UPI ID). Small, but real; live totals at https://tapdibs.vercel.app/impact.
+
+**Next seller (a plan, not a result).** Kundanvi Jewels, a jewellery seller who already sells on WhatsApp, is the planned first drop by an outside seller.
 
 **Market.** Estimates vary. Redseer projected Indian live commerce at $4 to 5 billion GMV by 2025 (via Adgully). IMARC puts it at about $7.0 billion in 2025. We cite both, as context, not as our forecast. Tanishq reported around ₹100 crore in sales through video calls over two months in 2020 (Business Insider India), which is why video viewing is on our list.
 
 ## 7. Honest status and limits
 
-- No real drop has run. No real users, orders or seller feedback.
+- One small real drop so far (20 Nov 2026): 3 buyers, friends of the team, 6 paid orders, ₹32. No outside seller yet, so no seller feedback.
 - No phone verification: a typed phone number is not verified.
 - No payments handled. Buyers pay the seller's UPI directly; Dibs records the seller's confirmation.
 - Pre-message blocking is not available on our plan, so the app refuses such text before sending, every screen hides it on arrival (a line sent straight through the Server API never rendered), and the webhook removes it after delivery.
 - The club has no real members yet; it was tested with synthetic buyers.
-- Tap speed in buyers' browsers is recorded but no real-buyer numbers exist yet.
+- Real-phone tap speed comes from one drop only: 9 taps, median 281 ms tap to result.
 - Video viewing is not built; no Hindi interface toggle; the order room links to the seller's WhatsApp number.
 - Light theme only; English screens only.
-- Latencies come from one machine in India. Phones on 4G are not measured. The 700 ms median target is met for a single warm tap (149 to 217 ms) and not met inside a 300-tap burst from one machine (median 2,752 ms).
+- Latencies come from one machine in India, plus 9 real taps from 3 phones in the first real drop (median 281 ms tap to result). The 700 ms median target is met for a single warm tap (149 to 217 ms) and not met inside a 300-tap burst from one machine (median 2,752 ms).
 - All tests and the load simulation use synthetic taps.
 
 ## 8. What existed before, and how we built it

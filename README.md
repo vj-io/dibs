@@ -13,7 +13,7 @@ Built for the Nexconn Build Challenge 2026, track **Marketplace & Support**. Tea
 | Live app | https://tapdibs.vercel.app |
 | Judge demo | https://tapdibs.vercel.app/try |
 | Feature map | https://tapdibs.vercel.app/how-it-works |
-| Real usage | https://tapdibs.vercel.app/impact (shows "nothing yet" until a real drop runs) |
+| Real usage | https://tapdibs.vercel.app/impact (real drops and real buyers only; first real drop 20 Nov 2026) |
 | Demo video | https://youtu.be/Thbq509PAsA (3:27) |
 | Code | https://github.com/vj-io/dibs (public) |
 | Nexconn App Key | `qd46yzrfq1obf` (public by design; Singapore data center) |
@@ -46,7 +46,9 @@ Small Indian sellers run "first come, first served" drops in comments, DMs and W
 - Video calls sell jewellery: Tanishq reported around ₹100 crore in sales through video calls over two months in 2020 ([Business Insider India](https://www.businessinsider.in/advertising/brands/article/tanishq-has-brought-in-around-rs-100-crore-sales-through-video-calls-in-the-last-2-months/articleshow/77767849.cms)).
 - The model works abroad: CommentSold lets US shoppers claim products by commenting ([CommentSold help](https://help.commentsold.com/hc/en-us/articles/4401982035860)).
 
-**No real drop has run yet.** The planned first drop is with Kundanvi Jewels, a jewellery seller who already sells on WhatsApp. It is a plan, not a result.
+**First real drop, 20 Nov 2026.** The team's own small shop dropped three digital pieces (₹1 to ₹10, 2 units each) to three friends, each tapping on their own phone. All 6 units were claimed and paid by UPI (₹32, confirmed by the seller), 2 of them through the waitlist after the first winner let go. Tap to on-screen result on their phones: median 281 ms over 9 taps (165 to 447 ms; 3 taps reported 4G). The scam shield removed 2 room messages (a phone number and a UPI ID). Small, but real; live totals at https://tapdibs.vercel.app/impact.
+
+**Next seller (a plan, not a result).** Kundanvi Jewels, a jewellery seller who already sells on WhatsApp, is the planned first drop by an outside seller.
 
 ## How a drop works
 
@@ -258,7 +260,9 @@ From `.env.example`:
 
 **Go to market.** The seller's own WhatsApp group is the channel. Each drop gives a share link and QR code. Buyers open it, type a name and phone number, and are in. Every drop is a message the seller already sends. The drop links and the shop club are the growth loop.
 
-**First seller (a plan, not a result).** Kundanvi Jewels, a jewellery seller who already sells on WhatsApp, is the planned first real drop. **No real drop has run yet.** Real Dibs buyers on our Nexconn App Key: 0 until that drop.
+**Traction so far.** One real drop (20 Nov 2026, described at the top): 3 real buyers on our Nexconn App Key, 6 paid orders, ₹32, 2 waitlist saves. Live totals: https://tapdibs.vercel.app/impact.
+
+**Next seller (a plan, not a result).** Kundanvi Jewels, a jewellery seller who already sells on WhatsApp, is the planned first drop by an outside seller.
 
 **Market.** Estimates vary. Redseer projected Indian live commerce at $4 to 5 billion GMV by 2025 (via Adgully). IMARC puts it at about $7.0 billion in 2025. We cite both, as context, not as our forecast. Tanishq reported around ₹100 crore in sales through video calls over two months in 2020 (Business Insider India), which is why video viewing is on our list.
 
@@ -276,8 +280,8 @@ Honest limits, each checked against the code:
 - **No video livestream, shipping integration, invoices or GST.**
 - **No marketplace across shops.** Each shop has its own link.
 - **No native apps.** It is a mobile-first web app.
-- **Not measured on real phones or 4G.** The load simulation is synthetic taps from one laptop. Behaviour at the Nexconn plan's connection limit is unknown.
-- **No real drop has run yet.** No real users, no seller feedback, no real orders.
+- **Barely measured on real phones.** The first real drop gave 9 taps from 3 phones (median 281 ms tap to result; 3 on 4G). The load simulation is synthetic taps from one laptop. Behaviour at the Nexconn plan's connection limit is unknown.
+- **One small real drop so far** (20 Nov 2026: 3 buyers, friends of the team). No outside seller has run a drop yet, so there is no seller feedback.
 - The viewer count in the sale-room header comes from Nexconn's open-channel participant count. It can over-count because offline users are removed lazily.
 
 ## What existed before
