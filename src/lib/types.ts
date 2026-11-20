@@ -145,6 +145,9 @@ export type Desk = {
   orders: Record<OrderState, DeskOrder[]>;
 };
 
+/** A seller-inbox line: an order whose buyer wrote since the team last opened it. lastText null = a photo or file. */
+export type InboxItem = { orderId: string; orderNo: number; buyer: string; item: string; unread: number; lastText: string | null; at: string };
+
 export type MyAccount = {
   buyer: BuyerSelf;
   holds: MeOrder[]; orders: MeOrder[];
@@ -182,6 +185,7 @@ export type Api = {
   "POST /api/seller/session": { req: { accessToken: string } | { testEmail: string }; res: { needsShop: false; me: SellerMe } | { needsShop: true; email: string } };
   "DELETE /api/seller/session": { req: undefined; res: Ok };
   "DELETE /api/seller/notice": { req: undefined; res: Ok };
+  "GET /api/seller/inbox": { req: undefined; res: { items: InboxItem[] } };
   "GET /api/seller/me": { req: undefined; res: { me: SellerMe | null; pendingEmail: string | null } };
   "POST /api/shops": { req: ShopInput; res: { shopId: string; staffId: string; me: SellerMe } };
   "GET /api/shops/:id": { req: undefined; res: ShopSettings };
@@ -225,6 +229,7 @@ export type Api = {
   "POST /api/orders/:id/cancel": { req: { reason: string }; res: Ok };
   "POST /api/orders/:id/assign": { req: { staffId: string }; res: Ok };
   "POST /api/orders/:id/heartbeat": { req: undefined; res: { state: OrderState; expiresAt: string | null } };
+  "POST /api/orders/:id/seen": { req: undefined; res: Ok };
   /** params: assigned = "me" | "all" (default) | <staffId>; state = one OrderState to fetch only that group */
   "GET /api/desk": { req: undefined; res: Desk };
 

@@ -1,5 +1,6 @@
 // Sale-room text pipeline: scam shield -> typed-claim helper -> answer bot. Fed by the Nexconn message:send webhook,
-// the mock send route and demo-bot chat (handleRoomText), plus the pre-message callback (rules only). Server only.
+// the mock send route and demo-bot chat (handleRoomText), plus the pre-message callback (rules only). The same webhook
+// counts buyer messages in order rooms for the seller inbox (handleOrderMsg). Server only.
 import { createHash } from "node:crypto";
 import { isQuestion } from "../ai/answer-bot.ts";
 import { promptText } from "../ai/claim-helper.ts";
@@ -186,6 +187,35 @@ export function clubTexts(body: Hook): (RoomText & { sub: string })[] {
   return texts.map((t) => ({ ...t, sub: String(club.find((d) => d.messageId === t.messageId)?.subchannelId) }));
 }
 
+export type OrderMsg = { channelId: string; fromUserId: string; messageId: string; text: string | null };
+const isGroup = (t: unknown) => t === 3 || t === "3" || (typeof t === "string" && /group/i.test(t));
+// what a person sends (the SDK's MessageType); read receipts, typing and command messages are not counted
+const SHOWN = new Set(["RC:TxtMsg", "RC:HQVCMsg", "RC:ImgMsg", "RC:GIFMsg", "RC:SightMsg", "RC:LBSMsg", "RC:FileMsg", "RC:ReferenceMsg", "RC:CombineV2Msg"]);
+
+/** Order-room messages (group channel) in a message:send webhook body; text only for RC:TxtMsg, null otherwise. */
+export function orderMsgs(body: Hook): OrderMsg[] {
+  if (body?.type !== "message:send" || !Array.isArray(body.data)) return [];
+  const res: OrderMsg[] = [];
+  for (const d of body.data as Record<string, unknown>[]) {
+    if (!d || !isGroup(d.channelType) || typeof d.messageType !== "string" || !SHOWN.has(d.messageType)) continue;
+    if (typeof d.channelId !== "string" || typeof d.userId !== "string" || typeof d.messageId !== "string") continue;
+    const text = d.messageType === "RC:TxtMsg" ? roomTexts({ type: body.type, data: [{ ...d, channelType: 4 }] })[0]?.text ?? null : null;
+    res.push({ channelId: d.channelId, fromUserId: d.userId, messageId: d.messageId, text });
+  }
+  return res;
+}
+
+/** A buyer's message in their own order room: one more unread for the shop's team (seller inbox). */
+export async function handleOrderMsg(m: OrderMsg): Promise<"ignored" | "duplicate" | "counted"> {
+  const buyerId = m.fromUserId.startsWith("b_") && UUID.test(m.fromUserId.slice(2)) ? m.fromUserId.slice(2) : null;
+  if (!buyerId || !m.messageId) return "ignored";
+  const seen = await sql`insert into webhook_seen (message_id) values (${m.messageId.slice(0, 200)}) on conflict do nothing returning 1`;
+  if (!seen.length) return "duplicate";
+  const r = await sql`update orders set buyer_unread = buyer_unread + 1, buyer_msg_at = now(), buyer_last_text = ${m.text?.trim().slice(0, 140).trimEnd() || null}
+                       where nexconn_group_id = ${m.channelId} and buyer_id = ${buyerId} returning 1`;
+  return r.length ? "counted" : "ignored";
+}
+
 type Creds = { appKey: string; appSecret: string };
 export type WebhookOpts = { defer?: (job: () => Promise<unknown>) => void; deps?: TextDeps; creds?: Creds; now?: number };
 
@@ -201,6 +231,7 @@ export async function handleWebhook(req: Request, o: WebhookOpts = {}): Promise<
   const defer = o.defer ?? ((job) => { void job(); });
   for (const m of msgs) defer(() => handleRoomText(m, o.deps).catch((e) => console.error("[webhook]", e instanceof Error ? e.message : e)));
   for (const m of clubTexts(body)) defer(() => screenClubText(m).catch((e) => console.error("[webhook] club", e instanceof Error ? e.message : e)));
+  for (const m of orderMsgs(body)) defer(() => handleOrderMsg(m).catch((e) => console.error("[webhook] order", e instanceof Error ? e.message : e)));
   return Response.json({ ok: true, accepted: msgs.length });
 }
 

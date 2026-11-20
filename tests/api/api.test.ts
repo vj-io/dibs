@@ -306,6 +306,29 @@ describe("Dibs API", () => {
     ok(await sc.get("/api/products"), 401);
   });
 
+  test("seller inbox: a buyer's order-room message is listed for the shop's team until one of them opens the order", async () => {
+    const g = (await b2.c.get(`/api/orders/${orderId}`)).body.nexconnGroupId as string;
+    ok(await b2.c.post("/api/mock/send", { target: { type: "group", id: g }, text: "  when will I get it?  ", as: "buyer" }));
+    let items: J[] = [];
+    for (let end = Date.now() + 10_000; !items.length && Date.now() < end;) { // counted in after(), once the send has answered
+      items = (await A.c.get("/api/seller/inbox")).body.items;
+      if (!items.length) await new Promise((r) => setTimeout(r, 300));
+    }
+    const [orderNo] = await admin`select order_no from orders where id = ${orderId}`;
+    assert.equal(items.length, 1);
+    assert.deepEqual({ ...items[0], at: typeof items[0].at, buyer: typeof items[0].buyer },
+      { orderId, orderNo: orderNo.order_no, buyer: "string", item: "Silver jhumka", unread: 1, lastText: "when will I get it?", at: "string" });
+    assert.deepEqual((await B.c.get("/api/seller/inbox")).body.items, [], "another shop sees none");
+    ok(await new Client().get("/api/seller/inbox"), 401);
+    ok(await b2.c.get("/api/seller/inbox"), 401);
+    ok(await new Client().post(`/api/orders/${orderId}/seen`), 401);
+    ok(await b2.c.post(`/api/orders/${orderId}/seen`), 403); // the order's buyer is not staff
+    ok(await B.c.post(`/api/orders/${orderId}/seen`), 403);
+    assert.equal((await A.c.get("/api/seller/inbox")).body.items.length, 1, "refused calls cleared nothing");
+    ok(await A.c.post(`/api/orders/${orderId}/seen`));
+    assert.deepEqual((await A.c.get("/api/seller/inbox")).body.items, []);
+  });
+
   test("moderation: ban blocks claims and joining; unban restores", async () => {
     const b5 = await buyer(A.slug, "Vik Patel");
     ok(await A.c.post(`/api/drops/${dropId}/moderate`, { buyerId: b5.id, action: "ban", reason: "spam" }));

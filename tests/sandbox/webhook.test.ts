@@ -12,7 +12,7 @@ import { bus } from "../../src/lib/server/mockbus.ts";
 import { drainOutbox } from "../../src/lib/server/outbox.ts";
 import { type TryStart } from "../../src/lib/server/sandbox.ts";
 import { startTryRetry as startTry } from "./helpers.ts";
-import { BLOCKED_TEXT, handlePreMessage, handleRoomText, handleWebhook, roomTexts, type TextDeps } from "../../src/lib/server/webhook.ts";
+import { BLOCKED_TEXT, handleOrderMsg, handlePreMessage, handleRoomText, handleWebhook, orderMsgs, roomTexts, type TextDeps } from "../../src/lib/server/webhook.ts";
 
 const creds = { appKey: "test-key", appSecret: "test-secret" };
 function signed(body: unknown, at = Date.now(), secret = creds.appSecret): Request {
@@ -195,4 +195,45 @@ test("the assistant never answers a message sent to review, and skips an answer 
   said.length = 0;
   assert.equal(await handleRoomText({ channelId: ch, fromUserId: judge(), messageId: id(), text: "kitne ka hai?" }, moving), "passed");
   assert.equal(said.length, 0);
+});
+
+test("order room: each buyer message counts once for the seller inbox (text kept, photo without); nobody else counts", async () => {
+  const [live] = await sql`select st.drop_item_id as item, pv.key from drops d join item_stock st on st.drop_item_id = d.live_item_id
+                             join product_variants pv on pv.id = st.variant_id where d.id = ${s.dropId} and st.available > 0 limit 1`;
+  assert.ok(live, "a piece is live with stock left");
+  const won = await fn<{ result: string; orderId: string }>("claim_dibs", live.item, live.key, s.buyerId, new Date());
+  assert.equal(won.result, "won");
+  const [{ g }] = await sql`select nexconn_group_id as g from orders where id = ${won.orderId}`;
+  const groupBody = (userId: string, messageType: string, content: object, messageId = id()) => ({
+    type: "message:send", id: "e1", time: Date.now(),
+    data: [{ userId, channelId: g, channelType: 3, messageType, content: JSON.stringify(content), time: Date.now(), messageId, os: "Websocket" }],
+  });
+  // parsing: group text and media; never read receipts, open-channel text, or other events
+  assert.deepEqual(orderMsgs(groupBody(judge(), "RC:TxtMsg", { content: "hi" }, "x1")), [{ channelId: g, fromUserId: judge(), messageId: "x1", text: "hi" }]);
+  assert.equal(orderMsgs(groupBody(judge(), "RC:ImgMsg", { imageUri: "https://x.test/p.jpg" }))[0].text, null);
+  assert.deepEqual(orderMsgs(groupBody(judge(), "RC:RRRspMsg", {})), []);
+  assert.deepEqual(orderMsgs(msgBody(ch, judge(), "hello")), []);
+  assert.deepEqual(orderMsgs({ ...groupBody(judge(), "RC:TxtMsg", { content: "hi" }), type: "message:delete" }), []);
+  assert.deepEqual(roomTexts(groupBody(judge(), "RC:TxtMsg", { content: "hi" })), [], "the sale-room path still skips groups");
+
+  // through the signed webhook, run in defer like the route's after()
+  const jobs: (() => Promise<unknown>)[] = [];
+  const mid = id();
+  const res = await handleWebhook(signed(groupBody(judge(), "RC:TxtMsg", { content: "  when will I get it?  " }, mid)), { creds, deps: fakes, defer: (j) => jobs.push(j) });
+  assert.equal(res.status, 200);
+  await Promise.all(jobs.map((j) => j()));
+  const row = async () => (await sql`select buyer_unread, buyer_last_text, buyer_msg_at from orders where id = ${won.orderId}`)[0];
+  const r1 = await row();
+  assert.deepEqual([r1.buyer_unread, r1.buyer_last_text], [1, "when will I get it?"]);
+  assert.ok(r1.buyer_msg_at);
+  assert.equal(await handleOrderMsg({ channelId: g, fromUserId: judge(), messageId: mid, text: "when will I get it?" }), "duplicate");
+  assert.equal(await handleOrderMsg({ channelId: g, fromUserId: judge(), messageId: id(), text: "x".repeat(300) }), "counted");
+  assert.equal((await row()).buyer_last_text, "x".repeat(140));
+  assert.equal(await handleOrderMsg({ channelId: g, fromUserId: judge(), messageId: id(), text: null }), "counted");
+  // the shop's team, the bot, another buyer, another channel: not counted
+  for (const [from, channel] of [["s_" + s.ownerId, g], ["dibs_bot", g], ["b_00000000-0000-4000-8000-000000000000", g], [judge(), "ord_nowhere"]]) {
+    assert.equal(await handleOrderMsg({ channelId: channel, fromUserId: from, messageId: id(), text: "hello" }), "ignored", from);
+  }
+  const r2 = await row();
+  assert.deepEqual([r2.buyer_unread, r2.buyer_last_text], [3, null]);
 });

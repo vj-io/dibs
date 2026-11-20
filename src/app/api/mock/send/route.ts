@@ -5,7 +5,7 @@ import { flags } from "@/lib/server/flags";
 import { body, fail, json, notFound, route } from "@/lib/server/http";
 import { bus } from "@/lib/server/mockbus";
 import { liveIdentity } from "@/lib/server/nexconn";
-import { handleRoomText } from "@/lib/server/webhook";
+import { handleOrderMsg, handleRoomText } from "@/lib/server/webhook";
 
 const As = z.enum(["buyer", "staff"]).optional();
 const Send = z.object({
@@ -22,6 +22,7 @@ export const POST = route("POST /api/mock/send", async (req: Request) => {
   if (why) fail(403, `send_${why}`, "You can't send here right now.");
   const message = bus().publish(b.target.type, b.target.id, me.userId, b.text, me.name);
   if (b.target.type === "room") after(() => handleRoomText({ channelId: b.target.id, fromUserId: me.userId, messageId: message.id, text: b.text })); // judge-mode package: scam shield, claim helper, answer bot
+  else after(() => handleOrderMsg({ channelId: b.target.id, fromUserId: me.userId, messageId: message.id, text: b.text }).catch(() => {})); // seller inbox
   return json({ message });
 });
 

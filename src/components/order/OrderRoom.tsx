@@ -96,6 +96,19 @@ export function OrderRoom({ orderId, viewer: asked, embedded, arrived }: {
     return () => clearTimeout(t);
   }, [vState, vExp]);
 
+  // staff with the room open have read the buyer's messages: clear this order from the seller inbox (Shell listens)
+  const seen = useCallback(() => {
+    api("POST /api/orders/:id/seen", undefined, { id: orderId }).then(() => window.dispatchEvent(new Event("dibs:inbox")), () => {});
+  }, [orderId]);
+  const staffView = view?.viewer === "staff";
+  useEffect(() => {
+    if (!staffView) return;
+    seen();
+    const back = () => { if (document.visibilityState === "visible") seen(); }; // a background tab has not read anything
+    document.addEventListener("visibilitychange", back);
+    return () => document.removeEventListener("visibilitychange", back);
+  }, [staffView, seen]);
+
   // the order group: history (cards + chat), live messages, read receipts
   const groupId = view?.nexconnGroupId;
   useEffect(() => {
@@ -125,6 +138,10 @@ export function OrderRoom({ orderId, viewer: asked, embedded, arrived }: {
       offs.push(live.watchGroup(groupId, (m) => {
         add(live, [m]);
         if (m.kind === "card" && m.from === BOT_ID) reload();
+        // ponytail: 3 s so the webhook's count lands first; a webhook slower than that leaves one stale unread until reopened
+        if (viewer === "staff" && m.kind === "text" && m.from.startsWith("b_")) {
+          setTimeout(() => { if (document.visibilityState === "visible") seen(); }, 3000);
+        }
       }));
       offs.push(live.onReceipts((rs) => setReceipts((cur) => {
         const next = { ...cur };
@@ -141,7 +158,7 @@ export function OrderRoom({ orderId, viewer: asked, embedded, arrived }: {
       hist().catch(() => setTimeout(() => { if (!gone) hist().catch(() => {}); }, 1500));
     }, () => setStatus("offline"));
     return () => { gone = true; offs.forEach((f) => f()); liveRef.current = null; };
-  }, [groupId, viewer, orderId, reload, toast]);
+  }, [groupId, viewer, orderId, reload, toast, seen]);
 
   // while the live connection is down, poll the order every 3 s
   const connected = status === "connected";
