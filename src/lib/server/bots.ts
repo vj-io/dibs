@@ -16,13 +16,15 @@ type Bot = { id: string; uid: string; name: string };
 type Item = { id: string; position: number; variants: { key: string; qty: number }[] };
 
 /**
- * The buyer script's clock (ms after /try/start unless noted). In a demo drop bot holds last 12 s, a human's 90 s (0009).
+ * The buyer script's clock (ms after /try/start unless noted). In the buyer demo a bot's hold lasts 6 s (0018; 12 s in
+ * the seller demo), a human's 90 s. So the judge, #3 on piece 1's waitlist, sees a bot promoted ~6 s after the drop and
+ * is promoted ~12 s after it (promoteWithinMs bounds the wait from the tap). The scam line lands during that wait.
  * Piece 2 is the buyer demo's last piece: it ends lastEndMs after piece 2 drops (the bots have sold it out by 13 s),
  * or winEndMs after the judge's room tick sees them holding it, whichever comes first; endMs is the backstop.
  */
 export const SCRIPT = {
-  holdMs: 12_000, firstLiveMs: 5000, firstLiveFallbackMs: 12_000, fallbackNextMs: 85_000, endMs: 180_000, lastEndMs: 16_000,
-  winEndMs: 4000, confirmMs: 3000, roomNextMs: 3000, confirmFallbackMs: 33_000, scamMs: 30_000, chatEveryMs: 3000, promoteWithinMs: 30_000,
+  holdMs: 6000, firstLiveMs: 3000, firstLiveFallbackMs: 12_000, fallbackNextMs: 85_000, endMs: 180_000, lastEndMs: 16_000,
+  winEndMs: 3000, confirmMs: 3000, roomNextMs: 2000, confirmFallbackMs: 33_000, scamMs: 14_000, chatEveryMs: 3000, promoteWithinMs: 13_000,
 } as const;
 
 const LINES = [
@@ -150,7 +152,7 @@ export async function scheduleStart(slot: Slot) {
   const b = await bots();
   const rows: Planned[] = slot.role === "buyer"
     ? [
-        // piece 1 goes live 5 s after the judge's screen is in the room (roomTick); this is the fallback
+        // piece 1 goes live 3 s after the judge's screen is in the room (roomTick); this is the fallback
         { ms: SCRIPT.firstLiveFallbackMs, action: "next", payload: { ifPosition: 0 } },
         { ms: SCRIPT.fallbackNextMs, action: "next", payload: { ifPosition: 1 } }, // piece 2 even if the judge never pays
         { ms: SCRIPT.endMs, action: "end", payload: {} },
@@ -195,13 +197,13 @@ export async function onPaidClaim(slot: Slot, orderId: string) {
 }
 
 /**
- * The judge's screen says it is on the sale room: after the confirm, piece 2 goes live 3 s later (once); once the judge
- * holds piece 2 (won, or promoted), the demo ends 4 s later (once), so the win is the last thing that happens.
+ * The judge's screen says it is on the sale room: after the confirm, piece 2 goes live 2 s later (once); once the judge
+ * holds piece 2 (won, or promoted), the demo ends 3 s later (once), so the win is the last thing that happens.
  */
 export async function roomTick(dropId: string) {
   const slot = await slotOf(dropId);
   if (!slot || slot.role !== "buyer") return;
-  // first time in the room: piece 1 in 5 s, so the judge sees the countdown, the drop and the bots' taps (once)
+  // first time in the room: piece 1 in 3 s, so the judge sees the countdown, the drop and the bots' taps (once)
   await sql`select sandbox_first_room(${dropId}, ${SCRIPT.firstLiveMs})`;
   await sql`
     insert into bot_schedule (drop_id, due_at, action, payload)
@@ -243,6 +245,16 @@ async function ensureRegistered(b: { buyerId: string; uid: string; name: string 
 
 export type Row = { id: string; action: Action; payload: Record<string, string | number | boolean | null> };
 
+/** A demo buyer's line in its own order room (the order group). */
+async function orderSay(orderId: string, text: string) {
+  const [o] = await sql<{ gid: string; buyerId: string; uid: string; name: string }[]>`
+    select o.nexconn_group_id as gid, b.id as "buyerId", b.nexconn_user_id as uid, b.display_name as name
+      from orders o join buyers b on b.id = o.buyer_id where o.id = ${orderId}`;
+  if (!o) return;
+  if (flags.mode === "mock") bus().publish("group", o.gid, o.uid, text, o.name);
+  else { await ensureRegistered(o); await nx.sendGroup(o.gid, { text }, o.uid); }
+}
+
 async function botChat(slot: Slot, r: Row) {
   const p = r.payload as { buyerId: string; uid: string; name: string; text: string };
   const muted = await sql`select 1 from bans where shop_id = ${slot.shopId} and buyer_id = ${p.buyerId} and (until is null or until > now())`;
@@ -281,7 +293,11 @@ async function exec(slot: Slot, r: Row) {
   switch (r.action) {
     case "chat": return botChat(slot, r);
     case "leave": await fn("leave_waitlist", String(p.claimId), String(p.buyerId)); return;
-    case "paid_claim": await fn("order_paid_claim", String(p.orderId), String(p.buyerId), String(p.utr)); return;
+    case "paid_claim":
+      await fn("order_paid_claim", String(p.orderId), String(p.buyerId), String(p.utr));
+      // the first bot payer asks in Hinglish in its order room, so a judge playing the seller sees Translate under a buyer line
+      if (p.utr === "DEMO-UTR-0001") background(orderSay(String(p.orderId), "Bhaiya ye kal tak mil jayega kya?"));
+      return;
     case "confirm": await fn("order_confirm", String(p.orderId), slot.staffId, true, "Confirmed by Asha (demo staff)"); return;
     case "next": return next(slot, typeof p.ifPosition === "number" ? p.ifPosition : null);
     case "go_live": await fn("drop_go_live", slot.dropId, slot.ownerId); return;
@@ -330,8 +346,9 @@ export async function runDue(slot: Slot): Promise<DueResult> {
 
 /**
  * Buyer script guarantee: once the judge is on a waitlist, bots ahead of them leave (leave_waitlist, like any buyer
- * may) so that the judge is promoted within ~43 s of their tap, keeping as many bots ahead as that allows (so the
- * judge sees bots promoted first). Recomputed every second; idempotent (a planned leave is not planned twice).
+ * may) so that the judge is promoted within promoteWithinMs (13 s) of their tap, keeping as many bots ahead as that
+ * allows (so the judge sees bots promoted first; 2 x holdMs plus the bots' 0.4 s fits in it, so one always stays).
+ * Recomputed every second; idempotent (a planned leave is not planned twice).
  */
 export async function planJudge(slot: Slot) {
   if (slot.role !== "buyer") return;

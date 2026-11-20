@@ -6,7 +6,7 @@ import { api, ApiError } from "@/lib/client/api";
 import { AppHeader, Footer, Highlight, Icon, cx, type IconName } from "@/components/ui";
 
 const CHOICES: { role: "buyer" | "seller"; icon: IconName; title: string; line: string }[] = [
-  { role: "buyer", icon: "tap", title: "Be a buyer", line: "Race 🤖 demo buyers for a piece, get promoted from the waitlist, pay, and win one outright. About a minute." },
+  { role: "buyer", icon: "tap", title: "Be a buyer", line: "Race 🤖 demo buyers for a piece, get promoted from the waitlist, pay, and win one outright. Under a minute." },
   { role: "seller", icon: "users", title: "Be the seller", line: "Run the live console: drop pieces, watch taps, holds and waitlists fill, confirm a payment and ship it." },
 ];
 
@@ -83,7 +83,7 @@ export function TryEntry({ suggested = "buyer" }: { suggested?: "buyer" | "selle
         <div className="flex items-start gap-3 rounded-wobble border-2 border-dashed border-violet-ink bg-violet p-4">
           <Icon name="robot" size={24} className="mt-0.5 shrink-0 text-violet-ink" />
           <p className="leading-snug">
-            <strong>About the bots:</strong> the 40 🤖 demo buyers tap at set delays and don&apos;t pay for what they win in your room, so you see a waitlist promotion within about a minute.
+            <strong>About the bots:</strong> the 40 🤖 demo buyers tap at set delays and don&apos;t pay for what they win in your room, so you see a waitlist promotion within about 15 seconds of your tap.
             They go through the same claim function as real buyers, nothing is rigged, and nothing here is real money.
           </p>
         </div>

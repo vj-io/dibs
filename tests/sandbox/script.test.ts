@@ -37,7 +37,7 @@ before(async () => {
 });
 after(async () => { await sql.end({ timeout: 5 }); });
 
-type Run = { roomToLiveMs: number; startMs: number; liveLagMs: number; promotedAfterStart: number; promotedAfterTap: number; tapAt: number; confirmMs: number; win2AfterStart: number; winMs: number; waitPos: number; endAfterWinMs: number };
+type Run = { botsFirst: number; roomToLiveMs: number; startMs: number; liveLagMs: number; promotedAfterStart: number; promotedAfterTap: number; tapAt: number; confirmMs: number; win2AfterStart: number; winMs: number; waitPos: number; endAfterWinMs: number };
 const dropStatus = (dropId: string) => sql`select status from drops where id = ${dropId}`.then((r) => r[0]?.status as string);
 
 async function judgeRun(i: number): Promise<Run> {
@@ -45,7 +45,7 @@ async function judgeRun(i: number): Promise<Run> {
   const s = await startTry("buyer", `Judge${i} Tester`);
   const loop = runLoop(s.dropId, 170_000);
   await sleep(1500);                                                          // the room takes a moment to appear
-  await roomTick(s.dropId);                                                   // the room is on screen: piece 1 in 5 s
+  await roomTick(s.dropId);                                                   // the room is on screen: piece 1 in 3 s
   const tJoin = Date.now();
   try {
     const p1 = await waitFor("piece 1 live", () => item(s.dropId, 1), 12_000);
@@ -55,10 +55,10 @@ async function judgeRun(i: number): Promise<Run> {
     // because a shared database (production, other suites) sometimes stalls a query for seconds
     const nexts = await sql`select payload ? 'firstRoom' as first, done_at from bot_schedule where drop_id = ${s.dropId} and action = 'next' and payload->>'ifPosition' = '0' order by done_at nulls last`;
     assert.equal(nexts[0].first, true, "the room tick, not the fallback, dropped piece 1");
-    assert.ok(lag >= 4900 && lag < 5000 + 3 * SLACK, `piece 1 goes live 5 s after the judge is in the room (${lag} ms)`);
+    assert.ok(lag >= SCRIPT.firstLiveMs - 100 && lag < SCRIPT.firstLiveMs + 3 * SLACK, `piece 1 goes live 3 s after the judge is in the room (${lag} ms)`);
     const [d] = await sql`select starts_at from drops where id = ${s.dropId}`;
     assert.ok(Math.abs(new Date(d.starts_at).getTime() - new Date(p1.live_at).getTime()) < 2000 + SLACK, "the room counted down to it");
-    await sleep(Math.max(0, tJoin + 6000 - Date.now(), 1000));              // the judge taps at +6 s (at least 1 s after seeing it)
+    await sleep(Math.max(0, tJoin + SCRIPT.firstLiveMs + 1000 - Date.now(), 1000)); // the judge taps 1 s after the drop (at least 1 s after seeing it)
     const variant = ["gold", "silver", "rose"][i % 3];
     const c = await fn<J>("claim_dibs", p1.id, variant, s.buyerId, new Date());
     const tapAt = Date.now();
@@ -77,6 +77,10 @@ async function judgeRun(i: number): Promise<Run> {
       return st.holds.find((h: J) => h.position === 1 && h.state === "held");
     }, 50_000, 200);
     const promotedAt = Date.now();
+    // the waitlist moved for a bot first ("Back in play → … from the waitlist"), unless the judge was #1
+    const [{ n: botsFirst }] = await sql`select count(*)::int as n from claims w join buyers b on b.id = w.buyer_id, claims j
+      where j.id = ${hold.claimId} and w.drop_item_id = j.drop_item_id and w.variant_id = j.variant_id and b.is_bot and w.promoted_at < j.promoted_at`;
+    if (c.position > 1) assert.ok(botsFirst >= 1, `a bot was promoted before judge ${i} (#${c.position})`);
     const ext = await waitFor("90 s demo hold", async () => (await sql`
       select (extract(epoch from (expires_at - promoted_at)))::int as s from claims where id = ${hold.claimId} and demo_extended_at is not null`)[0], 3000, 100);
     assert.equal(ext.s, 90, "the judge gets 90 s to pay");
@@ -131,7 +135,7 @@ async function judgeRun(i: number): Promise<Run> {
     await waitFor("piece 2 confirmed after the end", async () => (await sql`select 1 from orders where id = ${w.orderId} and state = 'paid'`)[0], 3000 + 3 * SLACK);
     await loop2;
     assert.equal((await sql`select count(*)::int as n from bot_schedule where drop_id = ${s.dropId} and done_at is null`)[0].n, 0, "nothing left to run");
-    return { roomToLiveMs, startMs: tJoin - t0, liveLagMs: lag, promotedAfterStart: promotedAt - t0, promotedAfterTap: promotedAt - tapAt, tapAt: tapAt - t0, confirmMs, win2AfterStart, winMs: w.ms, waitPos: c.position, endAfterWinMs };
+    return { botsFirst, roomToLiveMs, startMs: tJoin - t0, liveLagMs: lag, promotedAfterStart: promotedAt - t0, promotedAfterTap: promotedAt - tapAt, tapAt: tapAt - t0, confirmMs, win2AfterStart, winMs: w.ms, waitPos: c.position, endAfterWinMs };
   } finally {
     await finish(s.dropId, s.ownerId);
     await loop;
@@ -146,11 +150,11 @@ test("buyer script: 5 simulated judges reach It's yours, pay, win piece 2, and t
   for (const r of runs) {
     // #3 when all ten bot taps commit first; from a laptop a slow bot tap can land after the judge (#1 or #2)
     assert.ok(r.waitPos >= 1 && r.waitPos <= 3, `waitlist position ${r.waitPos}`);
-    // the planner aims at <= 30 s after the tap; the sweep that promotes runs every second
-    assert.ok(r.promotedAfterTap <= 30_000 + SLACK, `promoted ${r.promotedAfterTap} ms after the tap`);
+    // the planner aims at <= 13 s after the tap; the sweep that promotes runs every second
+    assert.ok(r.promotedAfterTap <= SCRIPT.promoteWithinMs + SLACK, `promoted ${r.promotedAfterTap} ms after the tap`);
     assert.ok(r.confirmMs <= 3000 + 3 * SLACK, `confirm in ${r.confirmMs} ms`);
-    assert.ok(r.roomToLiveMs >= 2500 && r.roomToLiveMs <= 3000 + SLACK, `piece 2 ${r.roomToLiveMs} ms after the room tick`);
-    assert.ok(r.win2AfterStart <= 90_000, `It's yours twice inside 90 s (${r.win2AfterStart})`);
+    assert.ok(r.roomToLiveMs >= SCRIPT.roomNextMs - 500 && r.roomToLiveMs <= SCRIPT.roomNextMs + 3 * SLACK, `piece 2 ${r.roomToLiveMs} ms after the room tick`);
+    assert.ok(r.win2AfterStart <= 60_000, `It's yours twice inside 60 s (${r.win2AfterStart})`);
     assert.ok(r.endAfterWinMs <= SCRIPT.winEndMs + 3 * SLACK, `the demo ends ${r.endAfterWinMs} ms after the win`);
   }
 });
@@ -207,6 +211,9 @@ test("starts rotate slots and reuse one without leaking rows", { timeout: 240_00
   const won = await fn<J>("claim_dibs", p1.id, "gold", a.buyerId, new Date());
   assert.equal(won.result, "won");
   const [bot] = await sql`select id from buyers where is_bot limit 1`;
+  assert.equal((await fn<J>("claim_dibs", p1.id, "rose", bot.id, new Date())).result, "won");
+  const [sellerBotHold] = await sql`select (extract(epoch from (expires_at - committed_at)))::int as s from claims where drop_item_id = ${p1.id} and buyer_id = ${bot.id}`;
+  assert.equal(sellerBotHold.s, 12, "the seller demo keeps 12 s bot holds (its bots pay 5-8 s after winning)");
   await sql`insert into bans (shop_id, buyer_id, kind) values (${a.shopId}, ${bot.id}, 'mute')`;
   // make slot A the idlest used slot (never used slots still sort first), and start until it is the one reused:
   // other suites and production share the pool, so the next start may first take another idle slot
@@ -288,7 +295,7 @@ test("a human's sandbox hold is 90 s from the start; walking away still hands it
     assert.equal((await fn<J>("claim_dibs", p1.id, "gold", s.buyerId, new Date())).result, "waitlisted");
     assert.equal((await fn<J>("claim_dibs", p1.id, "gold", b2.id, new Date())).result, "waitlisted");
     const [botHold] = await sql`select (extract(epoch from (expires_at - committed_at)))::int as s from claims where drop_item_id = ${p1.id} and buyer_id = ${b1.id}`;
-    assert.equal(botHold.s, 12, "a bot's demo hold is 12 s");
+    assert.equal(botHold.s, 6, "a bot's hold in the buyer demo is 6 s");
     await sql`update claims set expires_at = clock_timestamp() - interval '1 second' where drop_item_id = ${p1.id} and buyer_id = ${b1.id}`;
     await fn("sweep_drop", s.dropId);
     // the promotion itself gives the human 90 s (no 20 s card or alert first); the extender has nothing left to do
@@ -312,7 +319,7 @@ test("a human's sandbox hold is 90 s from the start; walking away still hands it
     assert.equal((await sql`select state from claims where id = ${c.id}`)[0].state, "expired");
     assert.equal((await sql`select state from claims where drop_item_id = ${p1.id} and buyer_id = ${b2.id}`)[0].state, "held");
     const [b2Hold] = await sql`select (extract(epoch from (expires_at - promoted_at)))::int as s from claims where drop_item_id = ${p1.id} and buyer_id = ${b2.id}`;
-    assert.equal(b2Hold.s, 12, "the promoted bot gets 12 s");
+    assert.equal(b2Hold.s, 6, "the promoted bot gets 6 s");
   } finally {
     await finish(s.dropId, s.ownerId);
   }

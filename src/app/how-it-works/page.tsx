@@ -201,7 +201,7 @@ export default function HowItWorks() {
                 "Bots exist only in the demo room, never in a real shop's drop.",
                 "Every bot is labelled 🤖 wherever it appears.",
                 "Their taps are scripted: Demo bots tap at set delays; the claim logic is the same as a real drop. They call the same claim function and queue like anyone else.",
-                "In the buyer demo, bots never pay. A bot's hold runs out after 12 s, which is how you see a waitlist promotion; you get 90 s to pay. In the seller demo, a few bots tap I've paid with a demo UTR so you have orders to confirm.",
+                "In the buyer demo, bots never pay. A bot's hold runs out after 6 s, which is how you see a waitlist promotion; you get 90 s to pay. In the seller demo, a few bots tap I've paid with a demo UTR so you have orders to confirm.",
                 "Bots are excluded from every real number, including the impact page.",
               ].map((t) => (
                 <li key={t} className="flex items-start gap-2"><Icon name="robot" size={22} stroke={2.4} className="mt-0.5 shrink-0 text-violet-ink" /><span>{t}</span></li>

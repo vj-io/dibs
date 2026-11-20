@@ -43,27 +43,28 @@ test("seller: 3 fast taps, 5 more over 1-6 s", () => {
   assert.equal(t.filter((x) => x.ms >= 1000 && x.ms <= 6000).length, 5);
 });
 
-test("servedAt chains 12 s bot holds", () => {
-  assert.equal(servedAt([12_000], 0), 12_000);
-  assert.equal(servedAt([12_000], 2), 36_000);
-  assert.equal(servedAt([12_000, 12_300], 2), 24_000);
+test("servedAt chains 6 s bot holds", () => {
+  assert.equal(servedAt([6000], 0), 6000);
+  assert.equal(servedAt([6000], 2), 18_000);
+  assert.equal(servedAt([6000, 6300], 2), 12_000);
   assert.equal(servedAt([], 0), Infinity);
 });
 
-test("chooseKeep: judge promoted within 30 s of the tap, as many bots ahead as allowed", () => {
-  // tap 1 s after live, one unit (bot hold ends at 12.1 s), 2 bots ahead: keep 1 -> promoted at 24.1 s
-  assert.equal(chooseKeep([12_100], 2, 1000), 1);
-  // two units: both bots ahead can stay -> promoted at 24.1 s
-  assert.equal(chooseKeep([12_100, 12_300], 2, 1000), 2);
+test("chooseKeep: judge promoted within 13 s of the tap, as many bots ahead as allowed", () => {
+  // tap 1 s after live, one unit (bot hold ends at 6.1 s), 2 bots ahead: keep 1 -> promoted at 12.1 s
+  assert.equal(chooseKeep([6100], 2, 1000), 1);
+  // two units: both bots ahead can stay -> promoted at 12.1 s
+  assert.equal(chooseKeep([6100, 6300], 2, 1000), 2);
   // late tap (after the first promotion): nobody needs to leave
-  assert.equal(chooseKeep([24_100], 1, 14_000), 1);
+  assert.equal(chooseKeep([12_100], 1, 7000), 1);
   // holds that end too late: all leave
   assert.equal(chooseKeep([60_000], 3, 0), 0);
-  for (let tap = 1000; tap <= 10_000; tap += 500)
-    for (const ends of [[12_100], [12_100, 12_400]]) {
+  // any tap before the first hold ends: promoted 6-13 s after it, and at least one bot is promoted first
+  for (let tap = 500; tap <= 6000; tap += 250)
+    for (const ends of [[6100], [6100, 6400]]) {
       const k = chooseKeep(ends, 2, tap);
       const at = servedAt(ends, k);
-      assert.ok(at - tap <= 30_000 && at - tap >= 10_000, `tap ${tap} ends ${ends}: ${at - tap}`);
+      assert.ok(k >= 1 && at - tap <= SCRIPT.promoteWithinMs && at - tap >= 6000, `tap ${tap} ends ${ends}: keep ${k}, ${at - tap}`);
     }
 });
 
