@@ -332,6 +332,18 @@ describe("Dibs API", () => {
     assert.equal(await deskUnread(), 0);
   });
 
+  test("translate: only the order's buyer or the shop's staff; the body is checked before any model is asked", async () => {
+    const t = `/api/orders/${orderId}/translate`, line = { text: "Bhaiya ye kal tak mil jayega kya?", to: "en" };
+    ok(await new Client().post(t, line), 401);
+    ok(await b1.c.post(t, line), 403); // another buyer
+    ok(await B.c.post(t, line), 403); // staff of another shop
+    ok(await b2.c.post(`/api/orders/${randomUUID()}/translate`, line), 404);
+    // the order's buyer and its shop's staff are let through: an invalid body answers 400, before the rate limit and the AI
+    for (const c of [b2.c, A.c]) {
+      for (const b of [{ text: " ", to: "en" }, { text: "x".repeat(501), to: "hi" }, { text: "hello", to: "fr" }, { text: "hello" }]) ok(await c.post(t, b), 400);
+    }
+  });
+
   test("moderation: ban blocks claims and joining; unban restores", async () => {
     const b5 = await buyer(A.slug, "Vik Patel");
     ok(await A.c.post(`/api/drops/${dropId}/moderate`, { buyerId: b5.id, action: "ban", reason: "spam" }));

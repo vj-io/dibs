@@ -232,6 +232,8 @@ export type Api = {
   "POST /api/orders/:id/assign": { req: { staffId: string }; res: Ok };
   "POST /api/orders/:id/heartbeat": { req: undefined; res: { state: OrderState; expiresAt: string | null } };
   "POST /api/orders/:id/seen": { req: undefined; res: Ok };
+  /** text: at most 500 characters. errors: rate_limited 429 (20 a minute per caller), ai_unavailable 503 */
+  "POST /api/orders/:id/translate": { req: { text: string; to: "en" | "hi" }; res: { text: string } };
   /** params: assigned = "me" | "all" (default) | <staffId>; state = one OrderState to fetch only that group */
   "GET /api/desk": { req: undefined; res: Desk };
 

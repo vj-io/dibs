@@ -5,7 +5,7 @@ import { google } from "@ai-sdk/google";
 import { generateText } from "ai";
 import type { z } from "zod";
 
-export type AiJob = "claim" | "answer" | "scam";
+export type AiJob = "claim" | "answer" | "scam" | "translate";
 export type AiRecorder = (r: { job: AiJob; model: string; ms: number; ok: boolean }) => void;
 
 let record: AiRecorder = () => {};

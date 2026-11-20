@@ -9,6 +9,7 @@ import { getLive, type Live, type LiveMsg, type LiveStatus } from "@/lib/client/
 import { hhmm, useIsPhone, useSlow, useTryTick, withTimeout } from "@/lib/client/hooks";
 import { StillConnecting } from "@/components/sale/StillConnecting";
 import { BOT_ID, rupees, type Card } from "@/lib/codec";
+import { defaultTarget, MAX_TRANSLATE_CHARS, type Lang } from "@/lib/ai/translate";
 import type { Desk, OrderView, PublicConfig } from "@/lib/types";
 import {
   AppHeader, Banner, BottomSheet, Button, Card as Box, ConnectionBar, Countdown, EmptyState, Field, Icon, Input, LinkButton,
@@ -53,6 +54,7 @@ export function OrderRoom({ orderId, viewer: asked, embedded, arrived }: {
   // the one polite region speaks only about changes while the page is open: the state on arrival is on screen already
   const [arrival, setArrival] = useState<string | null>(null);
   const [warnedFor, setWarnedFor] = useState<string | null>(null); // the deadline whose 30 s mark has passed
+  const [pickedLang, setPickedLang] = useState<Lang | null>(null); // null: the viewer's default (read at tap time)
 
   const load = useCallback(async () => {
     try {
@@ -411,7 +413,10 @@ export function OrderRoom({ orderId, viewer: asked, embedded, arrived }: {
               sub={cfg ? (cfg.mode === "nexconn" ? "Private Nexconn group channel" : "Private group channel (local mock)") : null}
               meId={meId} onSend={sendChat} receipts={receipts}
               disabledReason={v.state === "cancelled" ? "This order has ended." : null}
-              empty={viewer === "buyer" ? "Questions about the piece? Ask the team here." : "No messages yet."} maxHeight="max-h-96" />
+              empty={viewer === "buyer" ? "Questions about the piece? Ask the team here." : "No messages yet."} maxHeight="max-h-96"
+              foot={(l, name) => (
+                <Translate orderId={orderId} text={l.text} from={name} first={() => pickedLang ?? defaultTarget(viewer, navigator.language)} onPick={setPickedLang} />
+              )} />
 
             {viewer === "buyer" && (v.state === "held" || v.state === "payment_claimed") && (
               cfg?.features.calls ? (
@@ -498,6 +503,59 @@ function BackToRoom({ href, label }: { href: string; label: string }) {
       <p className="flex items-center justify-between gap-2 px-1 font-hand text-lg">
         {stay ? <span>Take your time.</span> : <span>Going back in <span className="font-mono">{Math.max(0, left)}</span> s…</span>}
         {!stay && <button type="button" onClick={() => setStay(true)} className="min-h-12 px-2 font-sans text-base font-semibold underline">Stay here</button>}
+      </p>
+    </div>
+  );
+}
+
+const NO_TRANSLATION = "Translation isn't available right now. Try again.";
+
+/**
+ * Under a message from the other side: its translation into English or Hindi, for this viewer only (the message itself
+ * never changes). The toggle stays the same button (Translate / Hide), so focus is kept when the translation opens.
+ */
+function Translate({ orderId, text, from, first, onPick }: { orderId: string; text: string; from: string; first: () => Lang; onPick: (l: Lang) => void }) {
+  const [lang, setLang] = useState<Lang | null>(null); // the translation on show; null = hidden
+  const [done, setDone] = useState<Partial<Record<Lang, string>>>({});
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const shown = lang ? done[lang] : undefined;
+
+  async function show(to: Lang) {
+    setErr(null);
+    if (done[to]) { setLang(to); return; }
+    setBusy(true);
+    try {
+      const r = await api("POST /api/orders/:id/translate", { text: text.slice(0, MAX_TRANSLATE_CHARS), to }, { id: orderId });
+      setDone((d) => ({ ...d, [to]: r.text }));
+      setLang(to);
+    } catch (e) {
+      setErr(e instanceof ApiError && (e.code === "rate_limited" || e.status === 0) ? e.message : NO_TRANSLATION);
+    } finally { setBusy(false); }
+  }
+  const other: Lang = lang === "hi" ? "en" : "hi";
+  return (
+    <div className="flex max-w-full flex-col items-start px-1">
+      <div aria-live="polite" className="max-w-full">
+        {lang && shown && (
+          <div className="mt-1 rounded-wobble border-2 border-dashed border-ink/60 bg-paper px-3 py-1.5">
+            <p lang={lang} className="leading-snug [overflow-wrap:anywhere]">{shown}</p>
+            <p className="font-hand text-base leading-tight text-muted">Translated by AI</p>
+          </div>
+        )}
+        {err && <p className="mt-1 text-sm font-semibold text-pink-ink">{err}</p>}
+      </div>
+      <p className="flex flex-wrap items-center gap-x-3 text-sm">
+        <button type="button" disabled={busy} aria-expanded={!!shown} onClick={() => { if (shown) setLang(null); else void show(first()); }}
+          className="min-h-8 font-semibold underline decoration-2 underline-offset-2 disabled:cursor-progress disabled:text-muted">
+          {busy && !shown ? "Translating…" : shown ? "Hide" : "Translate"}<span className="sr-only">{shown ? " translation" : ` ${from}'s message`}</span>
+        </button>
+        {shown && (
+          <button type="button" disabled={busy} onClick={() => { onPick(other); void show(other); }}
+            className="min-h-8 font-semibold underline decoration-2 underline-offset-2 disabled:cursor-progress disabled:text-muted">
+            {busy ? "Translating…" : other === "hi" ? <span lang="hi">हिंदी</span> : "English"}<span className="sr-only">: show in {other === "hi" ? "Hindi" : "English"}</span>
+          </button>
+        )}
       </p>
     </div>
   );

@@ -25,7 +25,7 @@ export function whoIs(l: ChatLine, meId: string | null): Who {
 }
 
 export function Chat({
-  title = "Chat", sub, lines, meId, onSend, readOnly, disabledReason, note, receipts, collapsible, defaultOpen = true, empty, className, maxHeight = "max-h-80",
+  title = "Chat", sub, lines, meId, onSend, readOnly, disabledReason, note, receipts, collapsible, defaultOpen = true, empty, className, maxHeight = "max-h-80", foot,
 }: {
   title?: ReactNode;
   /** A quiet note beside the title (e.g. what carries this chat). Not shown on a collapsible chat. */
@@ -46,6 +46,8 @@ export function Chat({
   empty?: ReactNode;
   className?: string;
   maxHeight?: string;
+  /** Under each message from someone else (e.g. the order room's Translate). */
+  foot?: (l: ChatLine, name: string) => ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const [text, setText] = useState("");
@@ -121,6 +123,7 @@ export function Chat({
                   <p className={cx("rounded-wobble border-2 border-ink px-3 py-1.5 leading-snug [overflow-wrap:anywhere]",
                     w.mine ? "bg-lime" : w.bot ? "bg-violet" : w.staff ? "bg-sky" : "bg-paper")}>{l.text}</p>
                   {w.mine && seen && <span className="px-1 font-mono text-xs text-muted">Seen {hhmm(seen)}</span>}
+                  {!w.mine && foot?.(l, w.name)}
                 </div>
               </li>
             );
